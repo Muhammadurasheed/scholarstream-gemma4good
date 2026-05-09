@@ -34,6 +34,26 @@ class FirebaseDB:
     # User Profile Operations
     async def get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Fetch user profile from Firestore"""
+        # --- GUEST ACCESS OVERRIDE (For Hackathon Judges) ---
+        if user_id == "demo_guest_user":
+            return {
+                "uid": "demo_guest_user",
+                "email": "musa.demo@scholarstream.app",
+                "onboarding_completed": True,
+                "profile": {
+                    "name": "Musa Ibrahim",
+                    "academic_status": "Undergraduate",
+                    "school": "University of Lagos",
+                    "major": "Computer Science",
+                    "gpa": "3.8",
+                    "graduation_year": "2026",
+                    "background": ["First-generation student", "Minority"],
+                    "interests": ["Artificial Intelligence", "Web3", "Cybersecurity", "Open Source"],
+                    "financial_need": 15000,
+                    "patrol_enabled": True
+                }
+            }
+            
         try:
             doc_ref = self.db.collection('users').document(user_id)
             doc = doc_ref.get()

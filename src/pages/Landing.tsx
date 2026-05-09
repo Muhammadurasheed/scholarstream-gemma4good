@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion, useScroll } from 'framer-motion';
 import { ArrowRight, Sparkles, Zap, Shield, Globe, Search, Bell, GraduationCap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
 import ssLogo from '@/asset/ss_logo.png';
 
 const FloatingNav = () => {
@@ -46,6 +47,18 @@ const FloatingNav = () => {
 };
 
 const HeroSection = () => {
+  const { setDemoUser } = useAuth();
+  const navigate = useNavigate();
+
+  const handleJudgeAccess = async () => {
+    try {
+      await setDemoUser();
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Judge access failed:', error);
+    }
+  };
+
   return (
     <section className="relative min-h-screen flex flex-col items-center justify-center px-4 overflow-hidden pt-20">
       {/* Background Gradients */}
@@ -101,10 +114,13 @@ const HeroSection = () => {
               <ArrowRight className="ml-2 w-5 h-5" />
             </Link>
           </Button>
-          <Button variant="outline" size="lg" className="h-14 px-8 rounded-full text-lg border-white/20 hover:bg-white/5 backdrop-blur-sm" asChild>
-            <Link to="/login">
-              View Demo
-            </Link>
+          <Button 
+            variant="outline" 
+            size="lg" 
+            className="h-14 px-8 rounded-full text-lg border-white/20 hover:bg-white/5 backdrop-blur-sm"
+            onClick={handleJudgeAccess}
+          >
+            View Demo (Judge Access)
           </Button>
         </motion.div>
       </div>
