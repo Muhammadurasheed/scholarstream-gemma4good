@@ -1,6 +1,5 @@
 
 import structlog
-import google.generativeai as genai
 from typing import Optional, Dict, Any, List
 from app.config import settings
 from app.models import OpportunitySchema
@@ -11,38 +10,19 @@ import asyncio
 import re
 from urllib.parse import urlparse, urljoin
 
-logger = structlog.get_logger()
+from app.services.intelligence_gateway import intelligence_gateway
 
-# Configure Gemini
-if settings.gemini_api_key:
-    genai.configure(api_key=settings.gemini_api_key)
+logger = structlog.get_logger()
 
 class ReaderLLM:
     """
     The 'Reader' V2: Turns Raw HTML/Text into Structured JSON.
     UPGRADED: Can extract MULTIPLE opportunities from list pages.
-    Optimized for Gemini Flash (Fast/Cheap).
+    Routes through IntelligenceGateway to support Gemma 4 / Gemini.
     """
     
-    MODEL_NAME = settings.gemini_model or "gemini-1.5-flash"
-
     def __init__(self):
-        self.use_vertex = False
-        try:
-            import vertexai
-            from vertexai.generative_models import GenerativeModel
-            vertexai.init()
-            self.model = GenerativeModel(self.MODEL_NAME)
-            self.use_vertex = True
-            logger.info("Vertex AI initialized for ReaderLLM", mode="enterprise")
-        except Exception:
-            logger.warning("Vertex AI initialization failed for ReaderLLM. Falling back to API Key.")
-            if settings.gemini_api_key:
-                genai.configure(api_key=settings.gemini_api_key)
-                self.model = genai.GenerativeModel(self.MODEL_NAME)
-            else:
-                logger.warning("Gemini API key not configured for ReaderLLM")
-                self.model = None
+        logger.info("ReaderLLM initialized via IntelligenceGateway")
 
     async def parse_opportunity(self, raw_text: str, source_url: str) -> Optional[OpportunitySchema]:
         """
@@ -124,9 +104,9 @@ class ReaderLLM:
         """
 
         try:
-            # Rate-limited Gemini call with automatic retry on 429
+            # Rate-limited AI call
             raw_response = await gemini_rate_limiter.execute(
-                self._call_gemini, prompt
+                self._call_ai_gateway, prompt
             )
             
             # Handle potential JSON issues
@@ -188,28 +168,12 @@ class ReaderLLM:
             logger.error("Reader LLM extraction failed", url=source_url, error=str(e))
             return []
 
-    async def _call_gemini(self, prompt: str) -> str:
+    async def _call_ai_gateway(self, prompt: str) -> str:
         """
-        Raw Gemini/Vertex API call — isolated so the rate limiter can wrap it.
-        Raises on error (including 429) so the limiter can retry.
+        Calls the unified IntelligenceGateway.
+        This automatically routes to Gemma 4 or Gemini based on settings.
         """
-        if not self.model:
-             raise Exception("AI Model not initialized")
-
-        if self.use_vertex:
-            # Vertex SDK
-            response = await self.model.generate_content_async(
-                prompt,
-                generation_config={"response_mime_type": "application/json"}
-            )
-        else:
-            # Standard SDK
-            response = await self.model.generate_content_async(
-                prompt, 
-                generation_config={"response_mime_type": "application/json"}
-            )
-            
-        return response.text.strip()
+        return await intelligence_gateway.generate_content(prompt)
 
     def _detect_platform(self, url: str) -> str:
         """Detect platform for specialized parsing hints"""
