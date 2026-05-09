@@ -25,7 +25,7 @@ class DoraHacksDeepScraper:
     Deep scraper for DoraHacks that:
     1. Crawls the hackathon list page to find all hackathon URLs
     2. Visits each detail page to extract accurate prize pools and deadlines
-    3. Publishes enriched data to the Kafka stream
+    3. Publishes enriched data to the internal mesh or database
     """
     
     BASE_URL = "https://dorahacks.io"
@@ -332,8 +332,7 @@ class DoraHacksDeepScraper:
                         except Exception as db_err:
                             logger.error(f"Failed direct DB save for {url}: {db_err}")
 
-                        # Kafka publishing removed - we save directly to DB
-                        pass
+                        # Data is saved directly to DB; future enrichment will be handled via Internal Mesh
                 except Exception as e:
                     logger.error(f"Failed to extract from {url}: {str(e).encode(sys.stdout.encoding, errors='replace').decode(sys.stdout.encoding)}")
                 

@@ -113,7 +113,7 @@ async def verify_firebase_token(token: str) -> Optional[str]:
 async def process_and_route_opportunity(final_data: Dict):
     """
     Process enriched opportunity and route to connected clients.
-    Moved out of consume_kafka_stream for reuse.
+    Moved out of the event consumer for reuse.
     """
     try:
         # Convert to Scholarship Model
@@ -250,7 +250,7 @@ def normalize_opportunity(data: Any) -> Dict:
 
 def convert_to_scholarship(enriched_data: Dict) -> Optional[Scholarship]:
     """
-    Convert enriched opportunity dict from Kafka to Scholarship model
+    Convert enriched opportunity dict from the event bus to Scholarship model
     for Firestore persistence. STRICT VALIDATION APPLIED.
     """
     try:
