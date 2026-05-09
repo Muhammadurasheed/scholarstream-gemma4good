@@ -101,6 +101,10 @@ firebase_db = FirebaseDB()  # For persisting opportunities to Firestore
 
 async def verify_firebase_token(token: str) -> Optional[str]:
     """Verify Firebase ID token and return user ID"""
+    # --- GUEST ACCESS OVERRIDE (For Hackathon Judges) ---
+    if token == "GUEST_TOKEN":
+        return "demo_guest_user"
+        
     # Production Security: Verify against Firebase
     try:
         decoded_token = auth.verify_id_token(token)

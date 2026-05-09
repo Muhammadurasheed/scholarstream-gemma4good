@@ -37,6 +37,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Listen to Firebase auth state changes AND token refreshes
     const unsubscribe = onIdTokenChanged(auth, async (firebaseUser) => {
+      // --- HACKATHON OVERRIDE: Prioritize Guest Mode ---
+      if (localStorage.getItem('scholarstream_auth_token') === 'GUEST_TOKEN') {
+        console.log('✨ [AUTH] Guest Mode active, ignoring Firebase state changes');
+        setLoading(false);
+        return;
+      }
+
       if (firebaseUser) {
         console.log('✅ [AUTH] User authenticated:', {
           uid: firebaseUser.uid,

@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     # Upstash Redis Configuration (HTTP-based serverless Redis)
     upstash_redis_rest_url: str = Field(default="", env="UPSTASH_REDIS_REST_URL")
     upstash_redis_rest_token: str = Field(default="", env="UPSTASH_REDIS_REST_TOKEN")
+
+    @field_validator("upstash_redis_rest_url", "upstash_redis_rest_token")
+    @classmethod
+    def strip_whitespace(cls, v: str) -> str:
+        """Strip accidental whitespace/newlines from credentials"""
+        return v.strip() if v else v
     
     # CORS Settings (stored as comma-separated string)
     cors_origins: str = Field(
