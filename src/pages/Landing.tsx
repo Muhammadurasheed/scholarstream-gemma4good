@@ -37,8 +37,8 @@ const FloatingNav = () => {
           <Button variant="ghost" size="sm" className="rounded-full hover:bg-white/5" asChild>
             <Link to="/login">Sign in</Link>
           </Button>
-          <Button size="sm" className="rounded-full bg-foreground text-background hover:bg-foreground/90 transition-all font-medium px-6" asChild>
-            <Link to="/signup">Get Started</Link>
+          <Button size="sm" className="rounded-full bg-foreground text-background hover:bg-foreground/90 transition-all font-medium px-6" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
+            How it works
           </Button>
         </div>
       </div>
@@ -117,10 +117,13 @@ const HeroSection = () => {
           <Button 
             variant="outline" 
             size="lg" 
-            className="h-14 px-8 rounded-full text-lg border-white/20 hover:bg-white/5 backdrop-blur-sm"
+            className="h-14 px-8 rounded-full text-lg border-white/20 hover:bg-white/5 backdrop-blur-sm group"
             onClick={handleJudgeAccess}
           >
-            View Demo (Judge Access)
+            <span className="flex items-center gap-2">
+              Judge Access 
+              <span className="text-xs opacity-60 font-normal">(No login required)</span>
+            </span>
           </Button>
         </motion.div>
       </div>
@@ -189,7 +192,7 @@ const FeatureCard = ({ icon: Icon, title, description, delay = 0 }: { icon: any,
 
 const FeaturesSection = () => {
   return (
-    <section className="py-24 px-4 relative z-10">
+    <section id="features" className="py-24 px-4 relative z-10">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-16">
           <motion.h2

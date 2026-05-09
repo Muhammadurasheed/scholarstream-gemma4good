@@ -31,6 +31,9 @@ ScholarStream is not a search bar or another static database; it is an **Autonom
 ### Instructions: Ensure "Internet" is ON and "GPU T4 x2" is selected.
 
 ```python
+# 1. Environment Preparation
+!pip install -U bitsandbytes>=0.46.1 transformers accelerate
+
 import torch
 import json
 import transformers
@@ -47,17 +50,19 @@ model_id = "/kaggle/input/models/google/gemma-4/transformers/gemma-4-26b-a4b-it/
 tokenizer_id = "unsloth/gemma-2-9b-it" # High-speed compatible tokenizer
 
 # 2. Robust Config Loading
-# Instead of monkey-patching, we load the config explicitly and ensure type-safety
 try:
     config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
-    # Ensure MoE architecture parameters are recognized
-    if not hasattr(config, "model_type"):
-        config.model_type = "gemma2" 
 except Exception as e:
-    print(f"⚠️ Standard config load failed: {e}. Falling back to manual override.")
+    print(f"⚠️ Standard config load failed: {e}. Applying MoE Architecture Override...")
     from transformers import Gemma2Config
     with open(f"{model_id}/config.json", "r") as f:
         config_dict = json.load(f)
+    
+    # If transformers is too old to know 'gemma4', we alias it to 'gemma2' 
+    # to reuse the MoE-capable Gemma 2 logic paths.
+    if config_dict.get("model_type") == "gemma4":
+        config_dict["model_type"] = "gemma2"
+        
     config = Gemma2Config(**config_dict)
 
 # 3. Memory-Optimized Quantization (T4 Friendly)
