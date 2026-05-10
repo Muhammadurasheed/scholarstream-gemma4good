@@ -35,6 +35,7 @@ export const useScholarships = () => {
   // Calculate base stats
   const stats: DashboardStats = {
     opportunities_matched: scholarships.length,
+    total_count: scholarships.length, // alias used by StatsCard
     total_value: scholarships.reduce((sum, s) => sum + (s.amount || 0), 0),
     urgent_deadlines: scholarships.filter(s => {
       if (!s.deadline) return false;
@@ -122,12 +123,24 @@ export const useScholarships = () => {
         setDiscoveryProgress(50);
       }
 
-      // Poll for completion
+      // Poll for completion and Pulse
       if (response.job_id) {
         const pollInterval = setInterval(async () => {
           try {
+            // 1. Get Progress
             const status = await apiService.getDiscoveryProgress(response.job_id);
-            setDiscoveryProgress(prev => Math.min(prev + 10, 90));
+            setDiscoveryProgress(prev => Math.min(prev + 5, 95));
+
+            // 2. Get Pulse (Mission Transparency)
+            const pulse = await apiService.getDiscoveryPulse();
+            if (pulse.status === 'active' && pulse.missions.length > 0) {
+              const latestMission = pulse.missions[pulse.missions.length - 1];
+              toast({
+                title: '⚡ Agent Mission Update',
+                description: latestMission.mission_name || 'Scanning for niche opportunities...',
+                duration: 2000,
+              });
+            }
 
             if (status.new_scholarships && status.new_scholarships.length > 0) {
               queryClient.setQueryData(['scholarships', user.uid], (old: any) => ({
@@ -151,7 +164,7 @@ export const useScholarships = () => {
             clearInterval(pollInterval);
             setDiscoveryStatus('completed');
           }
-        }, 2000);
+        }, 3000);
       } else {
         setDiscoveryStatus('completed');
         setDiscoveryProgress(100);

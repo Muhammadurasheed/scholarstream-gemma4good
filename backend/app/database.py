@@ -45,11 +45,11 @@ class FirebaseDB:
                     "academic_status": "Undergraduate",
                     "school": "University of Lagos",
                     "major": "Computer Science",
-                    "gpa": "3.8",
+                    "gpa": "3.92",
                     "graduation_year": "2026",
-                    "background": ["First-generation student", "Minority"],
-                    "interests": ["Artificial Intelligence", "Web3", "Cybersecurity", "Open Source"],
-                    "financial_need": 15000,
+                    "background": ["Computer Science student", "Open Source Contributor", "AI Researcher"],
+                    "interests": ["Artificial Intelligence", "Web3", "Blockchain", "Cybersecurity", "Cloud Native", "Quantum Computing"],
+                    "financial_need": 25000,
                     "patrol_enabled": True
                 }
             }

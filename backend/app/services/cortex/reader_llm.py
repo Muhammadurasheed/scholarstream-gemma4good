@@ -4,7 +4,8 @@ from typing import Optional, Dict, Any, List
 from app.config import settings
 from app.models import OpportunitySchema
 from app.utils.json_utils import robust_json_loads
-from app.utils.rate_limiter import gemini_rate_limiter
+# NOTE: rate limiting is handled INSIDE the intelligence_gateway → gemma_service layer.
+# Do NOT import gemini_rate_limiter here — it caused Gemma calls to be throttled at 30 RPM.
 import json
 import asyncio
 import re
@@ -18,7 +19,7 @@ class ReaderLLM:
     """
     The 'Reader' V2: Turns Raw HTML/Text into Structured JSON.
     UPGRADED: Can extract MULTIPLE opportunities from list pages.
-    Routes through IntelligenceGateway to support Gemma 4 / Gemini.
+    Natively powered by Gemma 4 via IntelligenceGateway.
     """
     
     def __init__(self):
@@ -42,8 +43,8 @@ class ReaderLLM:
         V2 CORE: Extracts MULTIPLE opportunities from list/aggregator pages.
         This is critical for DevPost, DoraHacks, etc. that show many items per page.
         """
-        if not settings.gemini_api_key:
-            logger.warning("Gemini API key not configured")
+        if not settings.gemma_engine_enabled:
+            logger.warning("Gemma AI (Vertex) engine not enabled in settings")
             return []
 
         # Truncate text to avoid token limits but be generous for list pages
@@ -104,10 +105,9 @@ class ReaderLLM:
         """
 
         try:
-            # Rate-limited AI call
-            raw_response = await gemini_rate_limiter.execute(
-                self._call_ai_gateway, prompt
-            )
+            # Call AI gateway directly — rate limiting is handled inside gemma_service
+            # (uses gemma_rate_limiter at 200 RPM, not the old gemini_rate_limiter at 30 RPM)
+            raw_response = await self._call_ai_gateway(prompt)
             
             # Handle potential JSON issues
             if raw_response.startswith("```"):
@@ -165,13 +165,13 @@ class ReaderLLM:
             logger.error("Reader LLM JSON parse error", url=source_url, error=str(je))
             return []
         except Exception as e:
-            logger.error("Reader LLM extraction failed", url=source_url, error=str(e))
+            logger.error("Gemma AI extraction failed", url=source_url, error=str(e))
             return []
 
     async def _call_ai_gateway(self, prompt: str) -> str:
         """
         Calls the unified IntelligenceGateway.
-        This automatically routes to Gemma 4 or Gemini based on settings.
+        This automatically routes to Gemma 4 via Intelligence Gateway.
         """
         return await intelligence_gateway.generate_content(prompt)
 

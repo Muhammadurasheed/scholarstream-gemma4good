@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut as firebaseSignOut,
   onIdTokenChanged,
   User as FirebaseUser
@@ -21,6 +23,7 @@ interface AuthContextType {
   loading: boolean;
   signUp: (email: string, password: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   setDemoUser: () => Promise<void>;
   isOnboardingComplete: () => boolean;
@@ -136,6 +139,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       localStorage.removeItem('scholarstream_onboarding_complete');
+      
+      // Synchronous update to prevent race conditions during redirect
+      setUser({
+        uid,
+        email: userEmail || email,
+        name: undefined,
+      });
+      
       console.log('✅ [SIGNUP] Signup process completed successfully');
 
     } catch (error: any) {
@@ -163,7 +174,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = async (email: string, password: string) => {
     try {
       console.log('🔐 [SIGNIN] Starting signin process...', { email });
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      // Synchronous update to prevent race conditions during redirect
+      setUser({
+        uid: userCredential.user.uid,
+        email: userCredential.user.email || email,
+        name: userCredential.user.displayName || undefined,
+      });
+      
       console.log('✅ [SIGNIN] Signed in successfully', { email });
     } catch (error: any) {
       console.error('❌ [SIGNIN] Signin failed:', {
@@ -183,6 +202,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const userMessage = errorMessages[error.code] || error.message || 'Failed to sign in. Please try again.';
       throw new Error(userMessage);
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    try {
+      console.log('🔐 [SIGNIN] Starting Google signin process...');
+      const provider = new GoogleAuthProvider();
+      const userCredential = await signInWithPopup(auth, provider);
+      
+      // Synchronous update to prevent race conditions during redirect
+      setUser({
+        uid: userCredential.user.uid,
+        email: userCredential.user.email || '',
+        name: userCredential.user.displayName || undefined,
+      });
+      
+      console.log('✅ [SIGNIN] Google Sign-in successful');
+    } catch (error: any) {
+      console.error('❌ [SIGNIN] Google signin failed:', error);
+      throw new Error(error.message || 'Failed to sign in with Google');
     }
   };
 
@@ -233,7 +272,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signUp, signIn, signOut, setDemoUser, isOnboardingComplete }}>
+    <AuthContext.Provider value={{ user, loading, signUp, signIn, signInWithGoogle, signOut, setDemoUser, isOnboardingComplete }}>
       {children}
     </AuthContext.Provider>
   );

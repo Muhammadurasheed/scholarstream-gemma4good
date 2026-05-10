@@ -1,14 +1,11 @@
 """
-Production-Grade Adaptive Rate Limiter for Google Gemini API.
+Production-Grade Adaptive Rate Limiter for Vertex AI MaaS (Gemma).
 
 Implements:
 - Token-bucket algorithm for smooth request distribution
 - Exponential backoff with jitter on 429 responses
 - Asyncio Semaphore for concurrency control
 - Per-minute sliding window tracking
-
-Design: Google SRE-inspired. Prevents thundering herd on startup
-while maximizing throughput under steady-state load.
 """
 
 import asyncio
@@ -46,7 +43,7 @@ class AdaptiveRateLimiter:
         self.base_backoff = base_backoff
         self.max_backoff = max_backoff
         
-        # Concurrency semaphore — hard cap on parallel Gemini calls
+        # Concurrency semaphore — hard cap on parallel AI calls
         self._semaphore = asyncio.Semaphore(max_concurrent)
         
         # Token bucket — sliding window of request timestamps
@@ -165,7 +162,7 @@ class AdaptiveRateLimiter:
                         if attempt < self.max_retries:
                             backoff = self._calculate_backoff(attempt)
                             logger.warning(
-                                "Gemini 429 — backing off",
+                                "Gemma 429 — backing off",
                                 attempt=attempt + 1,
                                 max_retries=self.max_retries,
                                 backoff_s=round(backoff, 2),
@@ -175,7 +172,7 @@ class AdaptiveRateLimiter:
                     
                     elif "403" in error_str:
                         # Auth error — don't retry, it won't help
-                        logger.error("Gemini 403 — auth failure, not retrying", error=error_str)
+                        logger.error("Gemma 403 — auth failure, not retrying", error=error_str)
                         raise
                     
                     else:
@@ -183,7 +180,7 @@ class AdaptiveRateLimiter:
                         if attempt == 0:
                             backoff = self._calculate_backoff(0)
                             logger.warning(
-                                "Gemini call failed, retrying once",
+                                "Gemma call failed, retrying once",
                                 error=error_str[:100],
                                 backoff_s=round(backoff, 2),
                             )
@@ -193,20 +190,32 @@ class AdaptiveRateLimiter:
         
         # Exhausted all retries
         logger.error(
-            "Gemini call failed after all retries",
+            "Gemma (Vertex AI) call failed after all retries",
             retries=self.max_retries,
             last_error=str(last_error)[:200],
         )
         raise last_error
 
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Global singleton — shared across all Gemini callers
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-gemini_rate_limiter = AdaptiveRateLimiter(
+# Legacy AI Rate Limiter — for standard API calls
+legacy_rate_limiter = AdaptiveRateLimiter(
     max_rpm=30,          # Conservative default — adapts up/down automatically
-    max_concurrent=5,    # Max 5 parallel Gemini calls
+    max_concurrent=5,    # Max 5 parallel AI calls
     max_retries=4,       # Up to 4 retries on 429
     base_backoff=2.0,    # 2s base → 4s → 8s → 16s
     max_backoff=60.0,    # Never wait more than 60s
+)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Gemma Rate Limiter — high-throughput, for Vertex AI MaaS
+# Vertex AI MaaS has no hard RPM quota on Gemma — use it!
+# CRITICAL: This MUST be a separate instance from gemini_rate_limiter
+# so that other AI 429s do NOT throttle Gemma requests.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+gemma_rate_limiter = AdaptiveRateLimiter(
+    max_rpm=200,         # Vertex AI MaaS supports high concurrency
+    max_concurrent=20,   # Up to 20 parallel Gemma calls
+    max_retries=3,       # Fewer retries — Vertex is more reliable
+    base_backoff=1.0,    # 1s base → 2s → 4s
+    max_backoff=10.0,    # Never wait more than 10s
 )

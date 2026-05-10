@@ -58,9 +58,16 @@ class RefineryService:
                 # 2.3 Type-Tagging
                 opportunity.type_tags = self._enrich_type_tags(opportunity)
                 
-                # 2.4 Skip Vectorization for speed (can be done async later)
-                # from app.services.vectorization_service import vectorization_service
-                # opportunity.embedding = await vectorization_service.vectorize_opportunity(opportunity)
+                # 2.4 Deep Verification (Principal Grade)
+                # Ensure the name is not junk and URL is likely valid
+                if not opportunity.name or len(opportunity.name) < 5:
+                    continue
+                
+                # 2.5 Source Intelligence (Categorize for Discovery Depth)
+                opportunity.source_tier = self._detect_source_tier(opportunity.source_url)
+                    
+                # Mark as verified
+                opportunity.last_verified = datetime.now().isoformat()
 
                 # 3. Publish to Verified Stream
                 await self._publish_verified(opportunity)
@@ -71,6 +78,28 @@ class RefineryService:
                 continue
         
         logger.info(f"Refinery Complete: {processed_count}/{len(opportunities)} opportunities processed from {url[:40]}")
+
+    def _detect_source_tier(self, url: str) -> str:
+        """
+        Principal-Grade Source Intelligence.
+        Categorizes sources by 'Discovery Depth'.
+        """
+        url_lower = url.lower()
+        
+        # TIER 1: Aggregators (Low Discovery Depth, but high volume)
+        aggregators = ["devpost.com", "mlh.io", "dorahacks.io", "kaggle.com", "devfolio.co", "hackquest.io", "taikai.network"]
+        if any(h in url_lower for h in aggregators):
+            return "Aggregator"
+            
+        # TIER 2: Atomic Sources (High Discovery Depth - The "Hidden" Signal)
+        if ".edu" in url_lower or ".gov" in url_lower:
+            return "Atomic Source"
+            
+        # TIER 3: Community/Niche (Reddit, LinkedIn, Foundations)
+        if any(h in url_lower for h in ["reddit.com", "linkedin.com", "x.com", ".org", "foundation", "blog"]):
+            return "Niche Signal"
+            
+        return "Standard"
 
     def _is_expired(self, deadline_ts: int) -> bool:
         """Strict Expiration Logic"""

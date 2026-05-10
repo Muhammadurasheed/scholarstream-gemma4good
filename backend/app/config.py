@@ -33,9 +33,9 @@ class Settings(BaseSettings):
     firebase_auth_provider_x509_cert_url: Optional[str] = Field(default="https://www.googleapis.com/oauth2/v1/certs", env="FIREBASE_AUTH_PROVIDER_X509_CERT_URL")
     firebase_client_x509_cert_url: Optional[str] = Field(default=None, env="FIREBASE_CLIENT_X509_CERT_URL")
     
-    # Google Gemini AI
-    gemini_api_key: Optional[str] = Field(default=None, env="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-1.5-flash", env="GEMINI_MODEL")
+    # Gemma 4 AI Configuration
+    ai_api_key: Optional[str] = Field(default=None, env="AI_API_KEY")
+    ai_model: str = Field(default="google/gemma-4-26b-a4b-it-maas", env="AI_MODEL")
     
     # Upstash Redis Configuration (HTTP-based serverless Redis)
     upstash_redis_rest_url: str = Field(default="", env="UPSTASH_REDIS_REST_URL")
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     
     # Rate Limiting
     rate_limit_per_minute: int = Field(default=60, env="RATE_LIMIT_PER_MINUTE")
-    gemini_rate_limit_per_hour: int = Field(default=1000, env="GEMINI_RATE_LIMIT_PER_HOUR")
+    ai_rate_limit_per_hour: int = Field(default=1000, env="AI_RATE_LIMIT_PER_HOUR")
     
     # Caching
     scholarship_cache_ttl_hours: int = Field(default=24, env="SCHOLARSHIP_CACHE_TTL_HOURS")

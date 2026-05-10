@@ -67,7 +67,7 @@ class EnrichmentWorker:
                     'source': "internal-mesh", 
                     'enriched_data': opp,
                     'enriched_at': time.time(),
-                    'ai_model': settings.gemini_model,
+                    'ai_model': settings.ai_model,
                     'origin_url': opp.get('url') or url
                 }
                 

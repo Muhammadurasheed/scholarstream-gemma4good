@@ -10,7 +10,7 @@ logger = structlog.get_logger()
 
 class DiscoveryPulseService:
     """
-    Real-time mission tracking via Redis.
+    Real-time mission tracking with Distributed (Redis) and Local (Memory) support.
     Provides transparency into what the Sentinel and AI Refinery are doing.
     """
     
@@ -19,6 +19,7 @@ class DiscoveryPulseService:
     
     def __init__(self):
         self.redis = None
+        self.memory_pulse: Dict[str, str] = {} # Fallback for local stability
         self.circuit_open = False
         self.circuit_reset_time = 0
         self.failure_count = 0
@@ -31,28 +32,85 @@ class DiscoveryPulseService:
                     url=settings.upstash_redis_rest_url,
                     token=settings.upstash_redis_rest_token
                 )
+                # Test connection immediately
+                self.redis.ping()
             except Exception as e:
-                logger.warning("Pulse: Redis connection failed", error=str(e))
+                logger.warning("Pulse: Redis connection failed, falling back to Memory Vault", error=str(e))
+                self.redis = None
                 
     def announce_mission(self, mission_id: str, target: str, status: str = "active"):
         """Announce a new or updated mission"""
-        if not self.redis or self._circuit_open(): return
+        pulse_data = {
+            "mission_id": mission_id,
+            "target": target,
+            "status": status,
+            "timestamp": time.time(),
+            "label": f"Sentinel is patrolling {target}" if status == "active" else f"Mission {status}"
+        }
         
-        try:
-            pulse_data = {
-                "mission_id": mission_id,
-                "target": target,
-                "status": status,
-                "timestamp": time.time(),
-                "label": f"Sentinel is patrolling {target}" if status == "active" else f"Mission {status}"
-            }
-            # Use HSET to keep multiple active missions if needed, for now we just use a single key for 'current'
-            self.redis.hset(self.PULSE_KEY, mission_id, json.dumps(pulse_data))
-            self.redis.expire(self.PULSE_KEY, self.MISSION_TTL)
-            logger.info("Pulse: Mission Announced", mission=target)
-        except Exception as e:
-            logger.error("Pulse: Announcement failed", error=str(e))
-            self._record_failure()
+        # 1. Update Memory (Immediate & Reliable Fallback)
+        self.memory_pulse[mission_id] = json.dumps(pulse_data)
+        
+        # 2. Update Redis (Distributed)
+        if self.redis and not self._circuit_open():
+            try:
+                self.redis.hset(self.PULSE_KEY, mission_id, json.dumps(pulse_data))
+                self.redis.expire(self.PULSE_KEY, self.MISSION_TTL)
+                logger.debug("Pulse: Mission Synchronized to Redis", mission=target)
+            except Exception as e:
+                self._record_failure()
+
+    def complete_mission(self, mission_id: str, found_count: int = 0):
+        """Mark a mission as completed and report yield"""
+        raw = self.memory_pulse.get(mission_id)
+        if raw:
+            data = json.loads(raw)
+            data["status"] = "completed"
+            data["found_count"] = found_count
+            data["completed_at"] = time.time()
+            data["label"] = f"Mission Complete: {found_count} items found on {data.get('target')}"
+            
+            # Update Memory
+            self.memory_pulse[mission_id] = json.dumps(data)
+            
+            # Update Redis
+            if self.redis and not self._circuit_open():
+                try:
+                    self.redis.hset(self.PULSE_KEY, mission_id, json.dumps(data))
+                except:
+                    pass
+
+    def get_active_missions(self) -> List[Dict[str, Any]]:
+        """Retrieve all active/recently completed missions"""
+        all_missions_raw = {}
+        
+        # 1. Try Redis first for distributed data
+        if self.redis and not self._circuit_open():
+            try:
+                all_missions_raw = self.redis.hgetall(self.PULSE_KEY)
+            except:
+                self._record_failure()
+        
+        # 2. Fallback/Merge with Memory
+        if not all_missions_raw:
+            all_missions_raw = self.memory_pulse
+        
+        if not all_missions_raw: return []
+        
+        missions = []
+        now = time.time()
+        for mid, raw in all_missions_raw.items():
+            try:
+                data = json.loads(raw)
+                # Clean up old memory pulse
+                if data.get("status") == "completed" and (now - data.get("completed_at", 0)) > 300:
+                    if mid in self.memory_pulse: del self.memory_pulse[mid]
+                    continue
+                missions.append(data)
+            except:
+                continue
+        
+        return sorted(missions, key=lambda x: x.get('timestamp', 0), reverse=True)
 
     def _circuit_open(self) -> bool:
         """Check if circuit is open (disabled)"""
@@ -73,52 +131,6 @@ class DiscoveryPulseService:
             self.circuit_open = True
             self.circuit_reset_time = time.time() + self.CIRCUIT_TIMEOUT
             logger.error("Pulse: Circuit Breaker TRIPPED. Redis disabled for 5 minutes to prevent spam.")
-
-    def complete_mission(self, mission_id: str, found_count: int = 0):
-        """Mark a mission as completed and report yield"""
-        if not self.redis or self._circuit_open(): return
-        
-        try:
-            raw = self.redis.hget(self.PULSE_KEY, mission_id)
-            if raw:
-                data = json.loads(raw)
-                data["status"] = "completed"
-                data["found_count"] = found_count
-                data["completed_at"] = time.time()
-                data["label"] = f"Mission Complete: {found_count} items found on {data.get('target')}"
-                
-                # Keep completed missions for 5 minutes for UI feedback
-                self.redis.hset(self.PULSE_KEY, mission_id, json.dumps(data))
-                logger.info("Pulse: Mission Completed", target=data.get('target'), found=found_count)
-            else:
-                self.redis.hdel(self.PULSE_KEY, mission_id)
-        except Exception as e:
-            logger.error("Pulse: Completion log failed", error=str(e))
-            self._record_failure()
-
-    def get_active_missions(self) -> List[Dict[str, Any]]:
-        """Retrieve all active/recently completed missions"""
-        if not self.redis or self._circuit_open(): return []
-        
-        try:
-            all_missions = self.redis.hgetall(self.PULSE_KEY)
-            if not all_missions: return []
-            
-            missions = []
-            now = time.time()
-            for mid, raw in all_missions.items():
-                data = json.loads(raw)
-                # Filter out old completed missions (> 2 minutes)
-                if data.get("status") == "completed" and (now - data.get("completed_at", 0)) > 120:
-                    self.redis.hdel(self.PULSE_KEY, mid)
-                    continue
-                missions.append(data)
-            
-            return sorted(missions, key=lambda x: x.get('timestamp', 0), reverse=True)
-        except Exception as e:
-            logger.error("Pulse: Retrieval failed", error=str(e))
-            self._record_failure()
-            return []
 
 # Global instance
 discovery_pulse = DiscoveryPulseService()

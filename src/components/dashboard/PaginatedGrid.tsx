@@ -36,7 +36,7 @@ export const PaginatedGrid = ({
   // Reset to page 1 when opportunities list changes
   useEffect(() => {
     resetPage();
-  }, [opportunities.length, resetPage]);
+  }, [opportunities?.length, resetPage]);
 
   // Scroll to top of grid when page changes
   useEffect(() => {

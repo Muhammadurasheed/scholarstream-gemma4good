@@ -4,7 +4,7 @@ Opportunity Discovery Service - CORTEX PIPELINE ONLY
 All discovery is handled by the Playwright-based Cortex pipeline:
 1. Sentinel patrols target URLs with Playwright stealth
 2. Raw HTML streams to Kafka
-3. Gemini AI extracts structured opportunities
+3. Gemma AI extracts structured opportunities
 4. Enriched data pushed via WebSocket
 
 Legacy httpx scrapers have been REMOVED - they get blocked by anti-bot systems.
@@ -57,7 +57,7 @@ class OpportunityScraperService:
                 'Sentinel (navigator.py) → Target URLs',
                 'UniversalCrawlerService (crawler_service.py) → Playwright stealth',
                 'Kafka → Raw HTML streaming',
-                'Refinery (refinery.py) → Gemini AI extraction',
+                'Refinery (refinery.py) → Gemma AI extraction',
                 'Enriched opportunities → Frontend WebSocket'
             ]
         }

@@ -11,7 +11,7 @@ logger = structlog.get_logger()
 
 class ExtractionWorker:
     """
-    Consumes raw HTML from the Internal Broker, uses Gemini to extract opportunities,
+    Consumes raw HTML from the Internal Broker, uses Gemma to extract opportunities,
     and publishes structured JSON back to the broker.
     """
 
@@ -38,7 +38,7 @@ class ExtractionWorker:
 
             logger.info(f"Processing HTML from {url}", size=len(html))
 
-            # 1. Extract Opportunities using Gemini (or Intelligence Gateway)
+            # 1. Extract Opportunities using Gemma (or Intelligence Gateway)
             extracted_opps = await ai_enrichment_service.extract_opportunities_from_html(html, url)
             
             if not extracted_opps:

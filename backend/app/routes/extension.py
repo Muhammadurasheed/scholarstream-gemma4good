@@ -157,7 +157,7 @@ async def map_form_fields(
     """
     AI-powered form field mapping
 
-    Uses Gemini to intelligently map form fields to user profile data
+    Uses Gemma to intelligently map form fields to user profile data
     Returns a dictionary mapping field selectors to suggested values
 
     Example response:
@@ -290,7 +290,7 @@ Keys must be CSS selectors from the input. Values are what to fill in those fiel
     except Exception as e:
         error_msg = str(e)
         if "429" in error_msg or "quota" in error_msg.lower() or "exhausted" in error_msg.lower():
-            logger.warning("Gemini rate limit hit during field mapping", error=error_msg)
+            logger.warning("Gemma rate limit hit during field mapping", error=error_msg)
             raise HTTPException(status_code=429, detail="AI service temporarily unavailable. Please try again in a moment.")
         logger.error("Field mapping failed", user_id=user_id, error=error_msg)
         raise HTTPException(status_code=500, detail=f"Field mapping failed: {error_msg}")

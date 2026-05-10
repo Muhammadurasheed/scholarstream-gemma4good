@@ -53,7 +53,27 @@ const HeroSection = () => {
   const handleJudgeAccess = async () => {
     try {
       await setDemoUser();
-      navigate('/dashboard');
+      // Pass the Musa Ibrahim persona to trigger a fresh Deep Scout mission immediately
+      const musaProfile = {
+        firstName: "Musa",
+        lastName: "Ibrahim",
+        academicStatus: "Undergraduate",
+        school: "University of Lagos",
+        major: "Computer Science",
+        gpa: "3.92",
+        graduationYear: "2026",
+        background: ["Computer Science student", "Open Source Contributor", "AI Researcher"],
+        interests: ["Artificial Intelligence", "Web3", "Blockchain", "Cybersecurity"],
+        financialNeed: 25000,
+        patrol_enabled: true
+      };
+      
+      navigate('/dashboard', { 
+        state: { 
+          triggerDiscovery: true, 
+          profileData: musaProfile 
+        } 
+      });
     } catch (error) {
       console.error('Judge access failed:', error);
     }
@@ -108,24 +128,36 @@ const HeroSection = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
         >
-          <Button size="lg" className="h-14 px-8 rounded-full text-lg shadow-glow hover:scale-105 transition-transform duration-300" asChild>
-            <Link to="/signup">
-              Explore Opportunities
-              <ArrowRight className="ml-2 w-5 h-5" />
-            </Link>
+          <Button 
+            size="lg" 
+            className="h-14 px-10 rounded-full text-lg shadow-glow hover:scale-105 transition-transform duration-300 bg-primary text-white border-none"
+            onClick={handleJudgeAccess}
+          >
+            <Zap className="mr-2 w-5 h-5" />
+            Judge Access (Instant Demo)
           </Button>
+          
           <Button 
             variant="outline" 
             size="lg" 
             className="h-14 px-8 rounded-full text-lg border-white/20 hover:bg-white/5 backdrop-blur-sm group"
-            onClick={handleJudgeAccess}
+            asChild
           >
-            <span className="flex items-center gap-2">
-              Judge Access 
-              <span className="text-xs opacity-60 font-normal">(No login required)</span>
-            </span>
+            <Link to="/signup">
+              Create Account
+              <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </Link>
           </Button>
         </motion.div>
+        
+        <motion.p
+          className="mt-6 text-sm text-muted-foreground/60"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.2 }}
+        >
+          Skip onboarding and enter Musa Ibrahim's (CS Undergrad) AI-powered dashboard immediately.
+        </motion.p>
       </div>
 
       {/* Floating Elements */}

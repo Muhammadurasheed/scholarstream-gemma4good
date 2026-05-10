@@ -1,6 +1,11 @@
 """
 Gemma 4 AI Service (Native Implementation)
 Hosts the Scholar-Einstein agent logic using Gemma 4 via Vertex AI Maas.
+
+IMPORTANT AUTH NOTE:
+  Vertex AI MaaS endpoints require OAuth2 Bearer token authentication.
+  API key (?key=...) auth is NOT supported and causes 429/403 errors.
+  We use google.auth.default() (ADC) to get a short-lived Bearer token.
 """
 import os
 import httpx
@@ -13,7 +18,9 @@ import google.auth
 import google.auth.transport.requests
 
 from app.config import settings
-from app.utils.rate_limiter import gemini_rate_limiter
+# CRITICAL: Use the dedicated gemma_rate_limiter (200 RPM), NOT gemini_rate_limiter (30 RPM).
+# These two services must never share the same rate limiter instance.
+from app.utils.rate_limiter import gemma_rate_limiter
 from app.models import (
     ScrapedScholarship,
     UserProfile,
@@ -66,21 +73,26 @@ class GemmaAIService:
         tools: Optional[List[Dict]] = None
     ) -> Dict:
         """
-        Execute a chat completion against Gemma 4 via Vertex AI Maas using API Key.
+        Execute a chat completion against Gemma 4 via Vertex AI Maas.
+
+        AUTH: Uses OAuth2 Bearer token (ADC). Vertex AI MaaS does NOT support
+        API key (?key=...) auth — that causes 429/403 errors.
+        The get_access_token() method refreshes the short-lived token automatically.
         """
-        api_key = settings.gemini_api_key
-        url = f"{self.endpoint}?key={api_key}"
-        
         async def _raw_call() -> Dict:
+            # Refresh Bearer token (ADC — Application Default Credentials)
+            access_token = await self.get_access_token()
+
             headers = {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}",  # ← Correct auth for Vertex AI
             }
-            
+
             messages = []
             if system_instruction:
                 messages.append({"role": "system", "content": system_instruction})
             messages.append({"role": "user", "content": prompt})
-            
+
             payload = {
                 "model": self.model_id,
                 "messages": messages,
@@ -90,17 +102,18 @@ class GemmaAIService:
                     "enable_thinking": enable_thinking
                 }
             }
-            
+
             if tools:
                 payload["tools"] = [{"type": "function", "function": t} for t in tools]
                 payload["tool_choice"] = "auto"
-            
+
             async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(url, headers=headers, json=payload)
+                response = await client.post(self.endpoint, headers=headers, json=payload)
                 response.raise_for_status()
                 return response.json()
 
-        return await gemini_rate_limiter.execute(_raw_call)
+        # Use dedicated gemma_rate_limiter (200 RPM), NOT the shared gemini one
+        return await gemma_rate_limiter.execute(_raw_call)
 
     async def analyze_query_intent(self, user_query: str) -> Dict[str, Any]:
         """Deep intent analysis using Gemma's thinking mode"""

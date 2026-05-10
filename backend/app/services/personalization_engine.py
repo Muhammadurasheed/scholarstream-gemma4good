@@ -304,7 +304,7 @@ class PersonalizationEngine:
         user_profile: Any
     ) -> float:
         """
-        V2 ENHANCEMENT: Use Gemini embeddings for semantic matching.
+        V2 ENHANCEMENT: Use AI embeddings for semantic matching.
         Fallback to keyword matching if embeddings unavailable.
         """
         try:
@@ -323,7 +323,7 @@ class PersonalizationEngine:
             
             opp_text = self._get_opportunity_text(opportunity)
             
-            # Use Gemini to score semantic similarity (0-100)
+            # Use Gemma to score semantic similarity (0-100)
             prompt = f"""
             Rate the match between this user profile and opportunity on a scale of 0-100.
             Only output a single integer number, nothing else.

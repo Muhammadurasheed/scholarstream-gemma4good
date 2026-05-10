@@ -51,6 +51,7 @@ export interface Scholarship {
 
   source_url: string;
   source_type: SourceType;
+  source_tier?: string;
   discovered_at: string;
   last_verified: string;
 }
@@ -70,7 +71,7 @@ export interface UserProfile {
   academic_status: string;
   school: string;
   year?: string;
-  gpa?: number;
+  gpa?: number | string;
   major?: string;
   graduation_year?: string;
   background?: string[];
@@ -79,10 +80,13 @@ export interface UserProfile {
   country?: string;
   state?: string;
   city?: string;
+  patrol_enabled?: boolean; // Whether the Sentinel actively hunts for this user
+  profile_type?: 'coder' | 'medical' | 'arts' | 'engineering' | 'entrepreneur' | 'general';
 }
 
 export interface DashboardStats {
   opportunities_matched: number;
+  total_count: number;      // alias for opportunities_matched (used in StatsCard)
   total_value: number;
   urgent_deadlines: number;
   applications_started: number;

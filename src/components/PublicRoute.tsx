@@ -7,17 +7,18 @@ interface PublicRouteProps {
 }
 
 export const PublicRoute = ({ children }: PublicRouteProps) => {
-    const { user, loading } = useAuth(); // Assuming useAuth exposes loading state
+    const { user, loading, isOnboardingComplete } = useAuth();
 
     if (loading) {
         return <LoadingScreen />;
     }
 
     if (user) {
-        // If user is authenticated, redirect to dashboard
-        return <Navigate to="/dashboard" replace />;
+        // Route based on onboarding status — never blindly send to /dashboard
+        const destination = isOnboardingComplete() ? '/dashboard' : '/onboarding';
+        return <Navigate to={destination} replace />;
     }
 
-    // If not authenticated, render the children (Login/SignUp/Landing)
+    // Not authenticated — render the public page (Login/SignUp/Landing)
     return <>{children}</>;
 };

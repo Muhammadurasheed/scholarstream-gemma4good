@@ -1,16 +1,15 @@
 """
-Google Gemini AI Service
-Handles AI-powered scholarship enrichment and matching
+Gemma AI Service — Hackathon Native Implementation
+Handles AI-powered scholarship enrichment, matching, and intent analysis.
+Strictly uses Gemma 4 via Vertex AI MaaS. Gemini has been purged.
 """
 import os
-import google.generativeai as genai
-from google.generativeai.types import GenerationConfig
 from typing import Dict, List, Optional, Any
 import json
 import asyncio
 import structlog
-from datetime import datetime, timedelta
 import hashlib
+from datetime import datetime, timedelta
 
 try:
     from upstash_redis import Redis
@@ -20,97 +19,27 @@ except ImportError:
     Redis = None
 
 from app.config import settings
-from app.utils.rate_limiter import gemini_rate_limiter
+from app.services.gemma_service import gemma_service
 from app.models import (
     ScrapedScholarship,
     UserProfile,
     ScholarshipEligibility,
     ScholarshipRequirements,
-    AIEnrichmentResponse,
-    MatchTier,
-    PriorityLevel,
-    CompetitionLevel
+    AIEnrichmentResponse
 )
-
-from app.services.gemma_service import gemma_service
 
 logger = structlog.get_logger()
 
-
-class GeminiAIService:
-    """Multi-engine AI service supporting both Gemini and Native Gemma"""
+class GemmaAIService:
+    """
+    Native Gemma 4 AI Service.
+    All logic is optimized for Gemma's 27B-IT reasoning capabilities.
+    """
     
     def __init__(self):
-        """Initialize AI engine based on configuration toggle"""
-        self.gemma_active = settings.gemma_engine_enabled
-        if self.gemma_active:
-            logger.info("⚡ GEMMA NATIVE ENGINE ACTIVE (Hackathon Mode)")
-            return
-
-        self.use_vertex = False
+        logger.info("⚡ GEMMA NATIVE AI SERVICE ACTIVE (Hackathon Mode)")
         
-        # FAANG-grade: Allow forcing standard SDK via env (useful for specific API keys)
-        force_standard = os.getenv("FORCE_GEMINI_SDK", "false").lower() == "true"
-        
-        if not force_standard:
-            try:
-                import vertexai
-                from vertexai.generative_models import GenerativeModel
-                import google.auth
-                from google.auth.exceptions import DefaultCredentialsError
-
-                # STRICT CHECK: Only use Vertex if we have actual Google Cloud credentials (ADC)
-                try:
-                    credentials, project = google.auth.default()
-                    vertexai.init(project=project, location="us-central1")
-                    self.model = GenerativeModel(
-                        settings.gemini_model,
-                        generation_config={
-                            "max_output_tokens": 8192,
-                            "temperature": 0.7,
-                        }
-                    )
-                    self.use_vertex = True
-                    logger.info("Vertex AI initialized successfully", mode="enterprise_adc")
-                except DefaultCredentialsError:
-                    logger.warning("No Google Cloud ADC found. Vertex AI SDK skipped.")
-                    raise Exception("No ADC")
-                except Exception as ve:
-                    logger.warning(f"Vertex AI specific error: {ve}. Falling back.")
-                    raise ve
-
-            except Exception as e:
-                logger.warning(f"Vertex AI initialization skipped or failed: {e}. Falling back to API Key.")
-        else:
-            logger.info("Standard Gemini SDK forced via environment variable.")
-
-        # Standard SDK Fallback/Initialization
-        if not self.use_vertex:
-            if not settings.gemini_api_key:
-                logger.error("No Vertex AI credentials AND no GEMINI_API_KEY found.")
-                raise Exception("Missing AI credentials")
-
-            genai.configure(api_key=settings.gemini_api_key)
-            
-            # Default config for standard operations
-            self.default_config = GenerationConfig(
-                max_output_tokens=8192,
-                temperature=0.7,
-            )
-            # Long-form config for Sparkle content generation
-            self.longform_config = GenerationConfig(
-                max_output_tokens=8192,
-                temperature=0.75,
-                top_p=0.95,
-            )
-            
-            self.model = genai.GenerativeModel(
-                settings.gemini_model,
-                generation_config=self.default_config
-            )
-            logger.info("Gemini API initialized successfully", mode="standard_apikey", max_output_tokens=8192)
-        
-        # Initialize Upstash Redis for rate limiting and caching
+        # Initialize Upstash Redis for caching
         self.redis_client = None
         if UPSTASH_AVAILABLE and settings.upstash_redis_rest_url and settings.upstash_redis_rest_token:
             try:
@@ -118,237 +47,53 @@ class GeminiAIService:
                     url=settings.upstash_redis_rest_url,
                     token=settings.upstash_redis_rest_token
                 )
-                logger.info("Upstash Redis initialized successfully")
+                logger.info("Upstash Redis initialized for Gemma caching")
             except Exception as e:
                 logger.warning(f"Failed to initialize Upstash Redis: {e}. Falling back to in-memory caching.")
-                self.redis_client = None
-        else:
-            logger.warning("Upstash Redis not configured - using in-memory caching and rate limiting")
         
-        # Fallback in-memory cache if Redis unavailable
         self.memory_cache: Dict[str, tuple] = {}
-        
-        # Rate limiting configuration
-        self.rate_limit_key = "gemini_api_calls"
-        self.rate_limit_window = 3600  # 1 hour in seconds
-        self.max_calls_per_hour = settings.gemini_rate_limit_per_hour
-        
-        # In-memory rate limiter fallback
-        self.rate_limiter = {
-            'count': 0,
-            'window_start': datetime.now(),
-            'limit': settings.gemini_rate_limit_per_hour
-        }
-        
-        logger.info(
-            "Gemini AI Service initialized",
-            model=settings.gemini_model,
-            rate_limit=self.max_calls_per_hour,
-            redis_enabled=self.redis_client is not None
-        )
-    
-    def _check_rate_limit(self) -> bool:
-        """
-        Check if we're within rate limits
-        Uses Upstash Redis if available, falls back to in-memory tracking
-        """
-        if self.redis_client:
-            # Use Upstash Redis for distributed rate limiting
-            try:
-                current_calls = self.redis_client.get(self.rate_limit_key)
-                
-                if current_calls is None:
-                    # First call in this window
-                    self.redis_client.set(
-                        self.rate_limit_key,
-                        "1",
-                        ex=self.rate_limit_window
-                    )
-                    return True
-                
-                current_calls_int = int(current_calls)
-                if current_calls_int >= self.max_calls_per_hour:
-                    logger.warning(
-                        "Gemini rate limit exceeded (Redis)",
-                        current_calls=current_calls_int,
-                        max_calls=self.max_calls_per_hour
-                    )
-                    return False
-                
-                # Increment counter
-                self.redis_client.incr(self.rate_limit_key)
-                return True
-                
-            except Exception as e:
-                logger.error(f"Redis rate limit check failed: {e}. Using in-memory fallback.")
-                # Fall through to in-memory check
-        
-        # In-memory rate limiting fallback
-        now = datetime.now()
-        if (now - self.rate_limiter['window_start']) > timedelta(hours=1):
-            # Reset window
-            self.rate_limiter['count'] = 0
-            self.rate_limiter['window_start'] = now
-        
-        if self.rate_limiter['count'] >= self.rate_limiter['limit']:
-            logger.warning("Gemini rate limit exceeded (in-memory)")
-            return False
-        
-        self.rate_limiter['count'] += 1
-        return True
 
-    def generate_content(self, prompt: str) -> Any:
-        # ... (keep existing sync for compat)
-        if not self._check_rate_limit():
-            raise Exception("Rate limit exceeded")
-        try:
-            return self.model.generate_content(prompt).text
-        except Exception as e:
-            logger.error("Gemini generation failed", error=str(e))
-            raise e
+    async def generate_content_async(self, prompt: str, system_instruction: Optional[str] = None) -> str:
+        """Call Gemma 4 directly via Vertex AI MaaS."""
+        response = await gemma_service.generate_content_async(prompt, system_instruction=system_instruction)
+        return response.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-    async def generate_content_async(self, prompt: str) -> Any:
-        """Async call with engine-aware routing."""
-        if self.gemma_active:
-            return await gemma_service.generate_content_async(prompt)
-            
-        if not self._check_rate_limit():
-            raise Exception("Rate limit exceeded")
-        
-        # Route through the global adaptive rate limiter for retry + backoff
-        return await gemini_rate_limiter.execute(self._raw_gemini_call, prompt)
-
-    async def _raw_gemini_call(self, prompt: str) -> str:
-        """Raw Gemini API call — isolated for rate limiter wrapping."""
-        response = await self.model.generate_content_async(prompt)
-        return response.text
-
-    async def generate_long_content_async(self, prompt: str) -> str:
-        """Generate long-form content with extended token budget.
-        Used by Sparkle for DevPost/DoraHacks fields that need comprehensive output."""
-        if not self._check_rate_limit():
-            raise Exception("Rate limit exceeded")
-        
-        async def _long_call(p: str) -> str:
-            if self.use_vertex:
-                response = await self.model.generate_content_async(p)
-            else:
-                response = await self.model.generate_content_async(
-                    p,
-                    generation_config=self.longform_config
-                )
-            return response.text
-        
-        return await gemini_rate_limiter.execute(_long_call, prompt)
-    
     async def enrich_scholarship(
         self,
         scholarship: ScrapedScholarship,
         user_profile: UserProfile
     ) -> Optional[AIEnrichmentResponse]:
-        """Parse and enrich scholarship data with engine-aware routing"""
-        if self.gemma_active:
-            prompt = self._build_enrichment_prompt(scholarship, user_profile)
-            response_json = await gemma_service.generate_content_async(prompt)
-            content = response_json["choices"][0]["message"]["content"]
-            return self._parse_ai_response(content)
-
-        # Check cache first
+        """Parse and enrich scholarship data using Gemma 4 reasoning."""
+        
+        # 1. Check cache first
         cache_key = self._generate_cache_key(scholarship.source_url, user_profile.name)
         cached_enrichment = self._get_cached_enrichment(cache_key)
         if cached_enrichment:
-            logger.info("Using cached AI enrichment", source=scholarship.source_url)
+            logger.info("Using cached Gemma enrichment", source=scholarship.source_url)
             return cached_enrichment
         
-        # Check rate limit
-        if not self._check_rate_limit():
-            logger.error("Gemini API rate limit exceeded")
-            return None
-        
         try:
+            # 2. Build and Execute Gemma Prompt
             prompt = self._build_enrichment_prompt(scholarship, user_profile)
-            response = self.model.generate_content(prompt)
             
-            # Parse AI response
-            enriched_data = self._parse_ai_response(response.text)
+            # Using Gemma's thinking mode for deep analysis
+            content = await self.generate_content_async(prompt)
             
-            # Cache the result
+            # 3. Parse and Validate
+            enriched_data = self._parse_ai_response(content)
+            
+            # 4. Cache the result
             self._cache_enrichment(cache_key, enriched_data)
             
-            logger.info("Scholarship enriched with AI", source=scholarship.source_url)
+            logger.info("Scholarship enriched natively by Gemma 4", source=scholarship.source_url)
             return enriched_data
             
         except Exception as e:
-            logger.error("AI enrichment failed", error=str(e), source=scholarship.source_url)
+            logger.error("Gemma enrichment failed", error=str(e), source=scholarship.source_url)
             return None
     
-    def _build_enrichment_prompt(self, scholarship: ScrapedScholarship, user_profile: UserProfile) -> str:
-        """Build prompt for AI to enrich scholarship data"""
-        return f"""You are an expert scholarship analyst. Analyze this scholarship and provide structured data.
-
-SCHOLARSHIP DATA:
-Name: {scholarship.name}
-Organization: {scholarship.organization}
-Amount: ${scholarship.amount}
-Deadline: {scholarship.deadline}
-Description: {scholarship.description}
-Eligibility (raw): {scholarship.eligibility_raw or 'Not specified'}
-Requirements (raw): {scholarship.requirements_raw or 'Not specified'}
-
-USER PROFILE:
-Academic Status: {user_profile.academic_status}
-School: {user_profile.school or 'Not specified'}
-GPA: {user_profile.gpa or 'Not specified'}
-Major: {user_profile.major or 'Not specified'}
-Graduation Year: {user_profile.graduation_year or 'Not specified'}
-Background: {', '.join(user_profile.background) if user_profile.background else 'Not specified'}
-Financial Need: ${user_profile.financial_need or 'Not specified'}
-Interests: {', '.join(user_profile.interests) if user_profile.interests else 'Not specified'}
-
-TASK:
-Provide a JSON response with the following structure (respond ONLY with valid JSON, no additional text):
-
-{{
-  "eligibility": {{
-    "gpa_min": <float or null>,
-    "grades_eligible": [<list of grade levels: "High School Senior", "Undergraduate", "Graduate", etc.>],
-    "majors": [<list of eligible majors or null if any>],
-    "gender": <string or null>,
-    "citizenship": <string or null>,
-    "backgrounds": [<list: "First-generation", "Minority", "LGBTQ+", "Low-income", "Veteran", etc.>],
-    "states": [<list of state codes or null if nationwide>]
-  }},
-  "requirements": {{
-    "essay": <true/false>,
-    "essay_prompts": [<list of essay prompts if applicable>],
-    "recommendation_letters": <integer count>,
-    "transcript": <true/false>,
-    "resume": <true/false>,
-    "other": [<list of other requirements>]
-  }},
-  "tags": [<3-5 relevant tags like "STEM", "Need-Based", "Merit-Based", "Leadership", etc.>],
-  "match_score": <0-100 integer representing how well this user matches this scholarship>,
-  "match_tier": <"Excellent" (80-100), "Good" (60-79), "Fair" (40-59), or "Poor" (0-39)>,
-  "priority_level": <"URGENT" if deadline <7 days, "HIGH" if high match, "MEDIUM" if moderate match, "LOW" otherwise>,
-  "competition_level": <"Low", "Medium", or "High" based on requirements and award amount>,
-  "estimated_time": <string like "2 hours", "4-6 hours", based on requirements complexity>
-}}
-
-Calculate match_score based on:
-- GPA match (0-25 points)
-                - Interest alignment (0-15 points)
-                - Financial need match (0-15 points)
-
-Respond with ONLY the JSON object, no markdown formatting or additional text."""
-
     async def analyze_query_intent(self, user_query: str) -> Dict[str, Any]:
-        """
-        The "Emergency" Query Strategy.
-        Detects urgency ("fees due", "deadline", "urgent") and filters accordingly.
-        """
-        if not settings.gemini_api_key:
-             return {"is_urgent": False, "filters": {}, "vector_query": user_query}
-
+        """Analyze student query for urgency and intent using Gemma 4."""
         prompt = f"""
         Analyze this student query: "{user_query}"
         
@@ -370,12 +115,10 @@ Respond with ONLY the JSON object, no markdown formatting or additional text."""
         """
         
         try:
-            response = await self.generate_content_async(prompt)
-            data = self._parse_json_safe(response) # Helper needed
-            return data
+            content = await self.generate_content_async(prompt)
+            return self._parse_json_safe(content)
         except Exception as e:
-            logger.error("Intent analysis failed", error=str(e))
-            # Fallback
+            logger.error("Gemma intent analysis failed", error=str(e))
             is_urgent = any(w in user_query.lower() for w in ["urgent", "deadline", "fees", "asap"])
             return {
                 "is_urgent": is_urgent,
@@ -383,36 +126,67 @@ Respond with ONLY the JSON object, no markdown formatting or additional text."""
                 "vector_query": user_query
             }
 
-    def _parse_json_safe(self, text: str) -> Dict:
-        """Helper to clean and parse JSON from LLM"""
-        text = text.strip()
-        if text.startswith('```json'): text = text[7:]
-        if text.startswith('```'): text = text[3:]
-        if text.endswith('```'): text = text[:-3]
-        return json.loads(text.strip())
+    def _build_enrichment_prompt(self, scholarship: ScrapedScholarship, user_profile: UserProfile) -> str:
+        """Build prompt for Gemma to enrich scholarship data with reasoning."""
+        return f"""You are ScholarStream's Cortex V3 Intelligence Engine, powered by Gemma 4. 
+Analyze this scholarship against the student's profile and provide a structured matching report.
 
-    
+SCHOLARSHIP DATA:
+Name: {scholarship.name}
+Organization: {scholarship.organization}
+Amount: ${scholarship.amount}
+Deadline: {scholarship.deadline}
+Description: {scholarship.description}
+Eligibility (raw): {scholarship.eligibility_raw or 'Not specified'}
+
+USER PROFILE:
+Academic Status: {user_profile.academic_status}
+Major: {user_profile.major or 'Not specified'}
+GPA: {user_profile.gpa or 'Not specified'}
+Interests: {', '.join(user_profile.interests) if user_profile.interests else 'Not specified'}
+
+TASK:
+Provide a JSON response with the following structure (respond ONLY with valid JSON):
+
+{{
+  "eligibility": {{
+    "gpa_min": <float or null>,
+    "grades_eligible": [<list: "Undergraduate", "Graduate", etc.>],
+    "majors": [<list of eligible majors or null if any>],
+    "backgrounds": [<list: "Minority", "Low-income", etc.>]
+  }},
+  "requirements": {{
+    "essay": <true/false>,
+    "recommendation_letters": <integer>,
+    "transcript": <true/false>,
+    "resume": <true/false>
+  }},
+  "tags": [<3-5 relevant tags>],
+  "match_score": <0-100 integer based on profile fit>,
+  "match_tier": <"Excellent", "Good", "Fair", or "Poor">,
+  "priority_level": <"URGENT", "HIGH", "MEDIUM", or "LOW">,
+  "competition_level": <"Low", "Medium", or "High">,
+  "estimated_time": <string: e.g. "2 hours">
+}}
+
+Respond with ONLY the JSON object, no additional text."""
+
     def _parse_ai_response(self, response_text: str) -> AIEnrichmentResponse:
-        """Parse AI response into structured data"""
+        """Parse Gemma response into structured data."""
         try:
-            # Use helper
             data = self._parse_json_safe(response_text)
-            
-            # Validate and create structured response
             return AIEnrichmentResponse(
                 eligibility=ScholarshipEligibility(**data.get('eligibility', {})),
                 requirements=ScholarshipRequirements(**data.get('requirements', {})),
                 tags=data.get('tags', []),
-                match_score=float(data.get('match_score', 0)),
+                match_score=float(data.get('match_score', 50)),
                 match_tier=data.get('match_tier', "Fair"),
                 priority_level=data.get('priority_level', "MEDIUM"),
                 competition_level=data.get('competition_level', "Medium"),
-                estimated_time=data.get('estimated_time', "2 hours")
+                estimated_time=data.get('estimated_time', "2-3 hours")
             )
-            
         except Exception as e:
-            logger.error("Failed to parse AI response", error=str(e), response=response_text[:200])
-            # Return default data if parsing fails
+            logger.error("Failed to parse Gemma response", error=str(e))
             return AIEnrichmentResponse(
                 eligibility=ScholarshipEligibility(),
                 requirements=ScholarshipRequirements(),
@@ -423,83 +197,53 @@ Respond with ONLY the JSON object, no markdown formatting or additional text."""
                 competition_level="Medium",
                 estimated_time="2-3 hours"
             )
-    
+
+    def _parse_json_safe(self, text: str) -> Dict:
+        """Helper to clean and parse JSON from LLM output."""
+        text = text.strip()
+        if '```json' in text:
+            text = text.split('```json')[1].split('```')[0]
+        elif '```' in text:
+            text = text.split('```')[1].split('```')[0]
+        return json.loads(text.strip())
+
     def _generate_cache_key(self, source_url: str, user_name: str) -> str:
-        """Generate a unique cache key for scholarship + user combination"""
-        key_string = f"{source_url}_{user_name}"
+        key_string = f"{source_url}_{user_name}_gemma4"
         return hashlib.md5(key_string.encode()).hexdigest()
-    
+
     def _get_cached_enrichment(self, cache_key: str) -> Optional[AIEnrichmentResponse]:
-        """Get cached AI enrichment result from Redis or memory"""
-        # Try Redis first
         if self.redis_client:
             try:
                 cached = self.redis_client.get(f"ai_enrichment:{cache_key}")
                 if cached:
-                    logger.info("Cache hit (Redis)", cache_key=cache_key)
-                    # Parse JSON string back to model
-                    data = json.loads(cached)
-                    return AIEnrichmentResponse(**data)
-            except Exception as e:
-                logger.error(f"Redis cache retrieval failed: {e}")
-        
-        # Fallback to in-memory cache
+                    return AIEnrichmentResponse(**json.loads(cached))
+            except Exception: pass
         if cache_key in self.memory_cache:
-            cached_data, cached_time = self.memory_cache[cache_key]
-            cache_age_hours = (datetime.now() - cached_time).total_seconds() / 3600
-            if cache_age_hours < settings.ai_enrichment_cache_ttl_hours:
-                logger.info("Cache hit (memory)", cache_key=cache_key)
-                return cached_data
-        
+            data, ts = self.memory_cache[cache_key]
+            if (datetime.now() - ts).total_seconds() < settings.ai_enrichment_cache_ttl_hours * 3600:
+                return data
         return None
-    
+
     def _cache_enrichment(self, cache_key: str, enrichment: AIEnrichmentResponse):
-        """Cache AI enrichment result to Redis and memory"""
-        # Store in Redis if available
         if self.redis_client:
             try:
-                cache_ttl_seconds = settings.ai_enrichment_cache_ttl_hours * 3600
-                # Convert to dict then to JSON for storage
-                enrichment_dict = enrichment.model_dump()
                 self.redis_client.set(
                     f"ai_enrichment:{cache_key}",
-                    json.dumps(enrichment_dict),
-                    ex=int(cache_ttl_seconds)
+                    json.dumps(enrichment.model_dump()),
+                    ex=int(settings.ai_enrichment_cache_ttl_hours * 3600)
                 )
-                logger.info("Cached in Redis", cache_key=cache_key, ttl_hours=settings.ai_enrichment_cache_ttl_hours)
-            except Exception as e:
-                logger.error(f"Redis cache storage failed: {e}")
-        
-        # Also store in memory cache as backup
+            except Exception: pass
         self.memory_cache[cache_key] = (enrichment, datetime.now())
-        logger.info("Cached in memory", cache_key=cache_key)
-    
-    async def batch_enrich_scholarships(
-        self,
-        scholarships: List[ScrapedScholarship],
-        user_profile: UserProfile,
-        batch_size: int = 5
-    ) -> List[Optional[AIEnrichmentResponse]]:
-        """
-        Batch process multiple scholarships
-        Process in batches to optimize API usage
-        """
+
+    async def batch_enrich_scholarships(self, scholarships: List[ScrapedScholarship], user_profile: UserProfile, batch_size: int = 5):
         results = []
-        
         for i in range(0, len(scholarships), batch_size):
             batch = scholarships[i:i + batch_size]
-            logger.info("Processing scholarship batch", batch_num=i//batch_size + 1)
-            
             for scholarship in batch:
-                enriched = await self.enrich_scholarship(scholarship, user_profile)
-                results.append(enriched)
-            
-            # Brief pause between batches to respect rate limits
+                results.append(await self.enrich_scholarship(scholarship, user_profile))
             if i + batch_size < len(scholarships):
-                await asyncio.sleep(1)
-        
+                await asyncio.sleep(0.5) # Gemma 4 RPM is high on Vertex MaaS
         return results
 
-
 # Global AI service instance
-ai_service = GeminiAIService()
+ai_service = GemmaAIService()

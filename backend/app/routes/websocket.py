@@ -534,9 +534,12 @@ async def websocket_endpoint(websocket: WebSocket, token: str = ""):
         await websocket.close(code=1008, reason="User profile not found")
         return
 
-    # Register connection (don't call accept again - already accepted above)
+    # Extract the inner profile object for consistent matching
+    inner_profile = user_profile.get('profile', user_profile) if isinstance(user_profile, dict) else user_profile
+
+    # Register connection
     manager.active_connections[user_id] = websocket
-    manager.user_profiles[user_id] = user_profile
+    manager.user_profiles[user_id] = inner_profile
     logger.info(
         "WebSocket connected",
         user_id=user_id,

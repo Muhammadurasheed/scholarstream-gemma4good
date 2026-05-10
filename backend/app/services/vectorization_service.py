@@ -1,15 +1,10 @@
 
 import structlog
-import google.generativeai as genai
 from typing import List, Optional, Any
 from app.config import settings
 from app.models import DeepUserProfile, OpportunitySchema
 
 logger = structlog.get_logger()
-
-# Configure Gemini
-if settings.gemini_api_key:
-    genai.configure(api_key=settings.gemini_api_key)
 
 from vertexai.language_models import TextEmbeddingModel
 

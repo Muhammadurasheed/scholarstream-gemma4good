@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth, setAuthPersistence } from '@/lib/firebase';
+import { setAuthPersistence } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,7 +13,7 @@ import ssLogo from '@/asset/ss_logo.png';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { signIn, user, isOnboardingComplete, setDemoUser } = useAuth();
+  const { signIn, signInWithGoogle, user, isOnboardingComplete, setDemoUser } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -62,12 +61,14 @@ const Login = () => {
         title: 'Welcome back!',
         description: 'Successfully logged in',
       });
-      // Do NOT navigate here — let the useEffect handle it
-      // once AuthContext has synced onboarding status from Firestore.
+      // Explicitly navigate to prevent getting stuck on the login page
+      // /onboarding has its own logic to skip to /dashboard if already complete
+      const destination = isOnboardingComplete() ? '/dashboard' : '/onboarding';
+      navigate(destination, { replace: true });
     } catch (error: any) {
       toast({
-        title: 'Error',
-        description: 'Invalid email or password',
+        title: 'Login Failed',
+        description: error.message || 'Invalid email or password',
         variant: 'destructive',
       });
     } finally {
@@ -77,18 +78,13 @@ const Login = () => {
 
   const handleGoogleSignIn = async () => {
     try {
-      // Set persistence based on rememberMe before Google sign-in too
-      await setAuthPersistence(formData.rememberMe);
-      const provider = new GoogleAuthProvider();
-      // The AuthContext listener will handle state updates and redirection
-      // via the useEffect above once the user profile is fully loaded.
-      await signInWithPopup(auth, provider);
+      await signInWithGoogle();
       toast({
         title: 'Welcome back!',
         description: 'Successfully logged in',
       });
-      // Do NOT navigate here. Let the useEffect handle it to ensure
-      // localStorage (onboarding status) is synced first.
+      const destination = isOnboardingComplete() ? '/dashboard' : '/onboarding';
+      navigate(destination, { replace: true });
     } catch (error: any) {
       toast({
         title: 'Error',

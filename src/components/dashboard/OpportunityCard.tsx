@@ -10,7 +10,11 @@ import {
   Zap,
   TrendingUp,
   Users,
-  DollarSign
+  DollarSign,
+  Sparkles,
+  Search,
+  Globe,
+  Radio,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -56,6 +60,14 @@ const SOURCE_CONFIG: Record<string, { label: string, color: string, icon?: strin
   'kaggle.com': { label: 'Kaggle', color: 'bg-cyan-600 text-white border-transparent shadow-sm' },
 };
 
+// Discovery depth configuration - Highlighting the "Deep Scout" intelligence
+const TIER_CONFIG: Record<string, { label: string, color: string, icon: any }> = {
+  'Atomic Source': { label: 'Atomic Source', color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', icon: Sparkles },
+  'Niche Signal': { label: 'Niche Signal', color: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30', icon: Search },
+  'Aggregator': { label: 'Aggregator', color: 'bg-slate-500/10 text-slate-400 border-slate-500/20', icon: Globe },
+  'Standard': { label: 'Direct', color: 'bg-secondary/30 text-muted-foreground border-border/50', icon: ExternalLink },
+};
+
 // Match score color gradient
 const getMatchScoreColor = (score: number) => {
   if (score >= 90) return 'text-green-500';
@@ -86,6 +98,28 @@ export const OpportunityCard = ({
   const deadlineInfo = getDeadlineInfo(scholarship.deadline);
   const isNew = isNewScholarship(scholarship.discovered_at);
   const showNewBanner = isJustAdded || isNew;
+
+  // Human-readable freshness — proof that agents discovered this recently
+  const getDiscoveredAgo = (): string | null => {
+    if (!scholarship.discovered_at) return null;
+    try {
+      const discoveredMs = new Date(scholarship.discovered_at).getTime();
+      if (isNaN(discoveredMs)) return null;
+      const diffMs = Date.now() - discoveredMs;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+      if (diffMins < 2) return '🟢 Just discovered';
+      if (diffMins < 60) return `🟢 Discovered ${diffMins}m ago`;
+      if (diffHours < 24) return `🔵 Discovered ${diffHours}h ago`;
+      if (diffDays < 3) return `⚡ Found ${diffDays}d ago`;
+      return null; // older than 3 days — don't show timestamp
+    } catch {
+      return null;
+    }
+  };
+
+  const discoveredAgo = getDiscoveredAgo();
 
   // Calculate match score - ALWAYS recalculate to fix 47% ghost issue
   const matchScore = useMemo(() => {
@@ -247,12 +281,15 @@ export const OpportunityCard = ({
   return (
     <Card
       className={cn(
-        'group relative flex flex-col overflow-hidden transition-all duration-300',
-        'hover:shadow-xl hover:-translate-y-1 cursor-pointer',
-        'border border-border/50 bg-card'
+        'group relative flex flex-col overflow-hidden transition-all duration-500',
+        'hover:-translate-y-2 hover:shadow-[0_8px_40px_rgb(0,0,0,0.4)] cursor-pointer',
+        'border border-white/10 bg-black/40 backdrop-blur-xl',
+        'hover:bg-white/5 hover:border-white/20'
       )}
       onClick={() => navigate(`/opportunity/${scholarship.id}`)}
     >
+      {/* Subtle background glow on hover */}
+      <div className="absolute -inset-1 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 blur-2xl transition-opacity duration-500 pointer-events-none" />
       {/* JUST ADDED Banner - Full width, very prominent */}
       {isJustAdded && (
         <div className="absolute inset-x-0 top-0 z-20">
@@ -280,15 +317,15 @@ export const OpportunityCard = ({
 
       {/* Top accent bar based on match score */}
       <div className={cn(
-        'h-1 w-full',
+        'h-1 w-full relative z-10',
         isJustAdded ? 'mt-8' : '', // Add margin when just added banner is shown
-        matchScore >= 85 ? 'bg-gradient-to-r from-green-500 to-emerald-500' :
-          matchScore >= 70 ? 'bg-gradient-to-r from-emerald-500 to-teal-500' :
-            matchScore >= 50 ? 'bg-gradient-to-r from-yellow-500 to-orange-500' :
-              'bg-gradient-to-r from-muted to-muted-foreground/20'
+        matchScore >= 85 ? 'bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 shadow-[0_0_10px_rgba(52,211,153,0.5)]' :
+          matchScore >= 70 ? 'bg-gradient-to-r from-teal-400 to-blue-400 shadow-[0_0_10px_rgba(45,212,191,0.5)]' :
+            matchScore >= 50 ? 'bg-gradient-to-r from-yellow-400 to-orange-400 shadow-[0_0_10px_rgba(250,204,21,0.5)]' :
+              'bg-gradient-to-r from-zinc-600 to-zinc-800'
       )} />
 
-      <div className="p-5 flex flex-col flex-1">
+      <div className="p-6 flex flex-col flex-1 relative z-10">
         {/* Header Row: Type Badge + Source Badge (Replaces old badges) */}
         <div className="flex items-center justify-between mb-3 pr-8"> {/* Added pr-8 to avoid overlap with banner */}
           <div className="flex items-center gap-2 flex-wrap">
@@ -300,6 +337,17 @@ export const OpportunityCard = ({
             {sourceConfig && (
               <Badge variant="outline" className={cn('text-[10px] px-2 py-0 border font-medium flex-shrink-0', sourceConfig.color)}>
                 {sourceConfig.label}
+              </Badge>
+            )}
+
+            {/* Discovery Depth Badge (The "Wow" Factor) */}
+            {scholarship.source_tier && TIER_CONFIG[scholarship.source_tier] && (
+              <Badge variant="outline" className={cn('text-[10px] px-2 py-0 border font-bold animate-in fade-in zoom-in duration-500', TIER_CONFIG[scholarship.source_tier].color)}>
+                {(() => {
+                  const TierIcon = TIER_CONFIG[scholarship.source_tier].icon;
+                  return <TierIcon className="w-2.5 h-2.5 mr-1" />;
+                })()}
+                {TIER_CONFIG[scholarship.source_tier].label}
               </Badge>
             )}
           </div>
@@ -317,26 +365,26 @@ export const OpportunityCard = ({
         </div>
 
         {/* Organization + Logo Row */}
-        <div className="flex items-start gap-3 mb-3">
+        <div className="flex items-start gap-4 mb-4">
           <div className="flex-shrink-0">
             {scholarship.logo_url && !imageError ? (
               <img
                 src={scholarship.logo_url}
                 alt={scholarship.organization}
-                className="h-12 w-12 rounded-lg object-cover border border-border/50"
+                className="h-14 w-14 rounded-xl object-cover border border-white/10 shadow-lg"
                 onError={() => setImageError(true)}
               />
             ) : (
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/20">
-                <span className="text-sm font-bold">{getInitials(scholarship.organization)}</span>
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-white/5 text-primary border border-white/10 shadow-inner">
+                <span className="text-sm font-bold tracking-wider">{getInitials(scholarship.organization)}</span>
               </div>
             )}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs text-muted-foreground truncate mb-0.5">
+          <div className="flex-1 min-w-0 flex flex-col justify-center">
+            <p className="text-[11px] uppercase tracking-wider text-zinc-400 truncate mb-1 font-semibold">
               {scholarship.organization}
             </p>
-            <h3 className="line-clamp-2 text-base font-semibold text-foreground leading-tight group-hover:text-primary transition-colors">
+            <h3 className="line-clamp-2 text-base font-bold text-white leading-snug group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-zinc-400 transition-all">
               {scholarship.name}
             </h3>
           </div>
@@ -394,6 +442,14 @@ export const OpportunityCard = ({
                 +{(scholarship.tags || []).length - 3}
               </Badge>
             )}
+          </div>
+        )}
+
+        {/* Freshness Badge — the judge-proof that agents are live */}
+        {discoveredAgo && (
+          <div className="flex items-center gap-1.5 mb-4 px-2 py-1 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+            <Radio className="h-3 w-3 text-emerald-400 animate-pulse flex-shrink-0" />
+            <span className="text-[11px] text-emerald-400 font-medium">{discoveredAgo}</span>
           </div>
         )}
 

@@ -114,24 +114,35 @@ export function useRealtimeOpportunities() {
               break;
 
             case 'new_opportunity':
+            case 'new_opportunity_match':
               // Defensive check: Ensure opportunity object exists and has an ID
               if (message.opportunity && message.opportunity.id) {
-                // ADD TO BUFFER INSTEAD OF MAIN LIST
-                setBufferedOpportunities((prev) => {
-                  // Prevent duplicates in buffer
-                  if (prev.some(op => op.id === message.opportunity?.id)) return prev;
-                  // Prevent duplicates in main list
-                  if (opportunities.some(op => op.id === message.opportunity?.id)) return prev;
+                const opp = message.opportunity;
+                
+                // --- FAANG-Grade Instant Injection Logic ---
+                // If the dashboard is empty, inject IMMEDIATELY to avoid "Shimmer Anxiety"
+                // Also inject immediately if it's the first few opportunities
+                const shouldInjectImmediately = opportunities.length < 5 || bufferedOpportunities.length < 5;
 
-                  return [message.opportunity!, ...prev];
-                });
+                if (shouldInjectImmediately) {
+                  setOpportunities((prev) => {
+                    if (prev.some(op => op.id === opp.id)) return prev;
+                    return [opp, ...prev];
+                  });
+                } else {
+                  // ADD TO BUFFER (Twitter-style) for high-volume periods
+                  setBufferedOpportunities((prev) => {
+                    if (prev.some(op => op.id === opp.id)) return prev;
+                    if (opportunities.some(op => op.id === opp.id)) return prev;
+                    return [opp, ...prev];
+                  });
+                  setNewOpportunitiesCount((count) => count + 1);
+                }
 
-                setNewOpportunitiesCount((count) => count + 1);
-
-                if (message.opportunity.priority_level?.toLowerCase() === 'urgent') {
+                if (opp.priority_level?.toLowerCase() === 'urgent') {
                   toast({
                     title: '🚨 Urgent Opportunity Discovered!',
-                    description: `${message.opportunity.name} - Deadline approaching!`,
+                    description: `${opp.name} - Deadline approaching!`,
                     duration: 10000,
                   });
                 }

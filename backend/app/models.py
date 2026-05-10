@@ -145,6 +145,7 @@ class OpportunitySchema(BaseModel):
     priority_level: Optional[PriorityLevel] = "MEDIUM"
     match_tier: Optional[MatchTier] = "Fair"
     competition_level: Optional[CompetitionLevel] = "Medium"
+    source_tier: Optional[str] = "Standard" # "Standard", "Aggregator", "Atomic Source"
 
     # Vectorization
     embedding: Optional[List[float]] = Field(None, description="768-dim vector embedding")

@@ -6,7 +6,7 @@ import { Scholarship } from '@/types/scholarship';
  * Used by Dashboard tabs for scholarships, hackathons, bounties, competitions
  */
 export const usePaginatedOpportunities = (
-  opportunities: Scholarship[],
+  opportunities: Scholarship[] = [],
   itemsPerPage: number = 12
 ) => {
   const [currentPage, setCurrentPage] = useState(1);
