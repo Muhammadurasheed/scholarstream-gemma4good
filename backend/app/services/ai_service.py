@@ -37,7 +37,7 @@ class GemmaAIService:
     """
     
     def __init__(self):
-        logger.info("⚡ GEMMA NATIVE AI SERVICE ACTIVE (Hackathon Mode)")
+        logger.info("GEMMA NATIVE AI SERVICE ACTIVE (Hackathon Mode)")
         
         # Initialize Upstash Redis for caching
         self.redis_client = None

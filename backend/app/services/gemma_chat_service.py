@@ -86,7 +86,7 @@ Rules:
 2. If the user wants fresh data or local results are thin, dispatch a scout.
 3. Acknowledge user constraints (GPA, major, location) with empathy."""
 
-        thinking_process = ["🧠 **Analyzing request with Gemma 4 Reasoning...**"]
+        thinking_process = ["[Reasoning] Analyzing request with Gemma 4 Reasoning..."]
         
         final_text = ""
         found_opportunities = []
@@ -106,7 +106,7 @@ Rules:
                 
                 # Handle Thinking
                 if "thinking" in message_data:
-                    thinking_process.append(f"🧠 {message_data['thinking']}")
+                    thinking_process.append(f"[Thinking] {message_data['thinking']}")
                 
                 # Check for Tool Calls
                 tool_calls = message_data.get("tool_calls")
@@ -115,27 +115,27 @@ Rules:
                         fn_name = tc["function"]["name"]
                         fn_args = json.loads(tc["function"]["arguments"])
                         
-                        thinking_process.append(f"🛠️ **Action:** Executing `{fn_name}` for lead discovery.")
+                        thinking_process.append(f"[Action] Executing `{fn_name}` for lead discovery.")
                         
                         if fn_name in self.tools_map:
                             result = await self.tools_map[fn_name](user_id, **fn_args)
                             if isinstance(result, list):
                                 found_opportunities.extend(result)
-                                thinking_process.append(f"🔎 **Observation:** Found {len(result)} potential matches.")
+                                thinking_process.append(f"[Observation] Found {len(result)} potential matches.")
                             else:
-                                thinking_process.append(f"🔎 **Observation:** Tool executed successfully.")
+                                thinking_process.append(f"[Observation] Tool executed successfully.")
                             
                             # Append to message for the next model turn
                             message += f"\n[Observation from {fn_name}]: {json.dumps(result[:5])}"
                         else:
-                            thinking_process.append(f"⚠️ Tool `{fn_name}` not available in this environment.")
+                            thinking_process.append(f"[Warning] Tool `{fn_name}` not available in this environment.")
                 else:
                     final_text = message_data.get("content", "")
                     break
             
             # Final Synthesis if turn loop finished without final answer
             if not final_text:
-                thinking_process.append("✅ **Synthesis:** Finalizing my advice based on Gemma 4 reasoning.")
+                thinking_process.append("[Synthesis] Finalizing my advice based on Gemma 4 reasoning.")
                 summary_prompt = f"Summarize your findings for the student based on our discovery work. Results found: {len(found_opportunities)}"
                 summary_resp = await gemma_service.generate_content_async(prompt=summary_prompt, system_instruction=system_instruction)
                 final_text = summary_resp["choices"][0]["message"]["content"]
@@ -155,7 +155,7 @@ Rules:
             logger.error("Gemma Chat Loop failed", error=str(e))
             return {
                 'message': "I apologize, but I encountered an error while thinking with Gemma 4. Please try again.",
-                'thinking_process': "\n".join(thinking_process + [f"❌ **Error:** {str(e)}"]),
+                'thinking_process': "\n".join(thinking_process + [f"[Error] {str(e)}"]),
                 'opportunities': [],
                 'suggestions': [],
                 'actions': []

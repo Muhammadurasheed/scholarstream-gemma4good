@@ -10,7 +10,16 @@ import time
 logger = structlog.get_logger()
 
 
-from playwright.async_api import async_playwright, BrowserContext, Page
+try:
+    from playwright.async_api import async_playwright, BrowserContext, Page
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    logger.warning("Playwright not found. Hunter Drone scraping functionality will be disabled.")
+    logger.info("To fix: Run 'pip install playwright' and 'playwright install chromium'")
+    PLAYWRIGHT_AVAILABLE = False
+    # Mock types for type hinting
+    class BrowserContext: pass
+    class Page: pass
 import random
 
 class UniversalCrawlerService:
@@ -28,6 +37,10 @@ class UniversalCrawlerService:
 
     async def _init_browser(self):
         """Initialize Playwright Engine if not running (race-safe)"""
+        if not PLAYWRIGHT_AVAILABLE:
+            logger.error("Scraping failed: Playwright not installed in this environment.")
+            return
+
         # Fast path: already initialized
         if self.playwright and self.browser:
             return

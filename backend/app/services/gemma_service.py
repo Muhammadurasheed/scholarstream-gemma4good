@@ -39,8 +39,9 @@ class GemmaAIService:
     
     def __init__(self):
         self.project_id = settings.firebase_project_id or "scholarstream-gemma4good"
-        self.region = "global"
-        self.endpoint = f"https://aiplatform.googleapis.com/v1/projects/{self.project_id}/locations/{self.region}/endpoints/openapi/chat/completions"
+        # Gemma 4 MaaS models are served via the global endpoint
+        self.region = "us-central1"
+        self.endpoint = f"https://aiplatform.googleapis.com/v1/projects/{self.project_id}/locations/global/endpoints/openapi/chat/completions"
         self.model_id = "google/gemma-4-26b-a4b-it-maas"
         
         # Tool Map for ReAct execution
@@ -85,7 +86,7 @@ class GemmaAIService:
 
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {access_token}",  # ← Correct auth for Vertex AI
+                "Authorization": f"Bearer {access_token}",  # Correct auth for Vertex AI
             }
 
             messages = []
@@ -108,9 +109,18 @@ class GemmaAIService:
                 payload["tool_choice"] = "auto"
 
             async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(self.endpoint, headers=headers, json=payload)
-                response.raise_for_status()
-                return response.json()
+                try:
+                    response = await client.post(self.endpoint, headers=headers, json=payload)
+                    response.raise_for_status()
+                    return response.json()
+                except httpx.HTTPStatusError as e:
+                    logger.error(
+                        "Gemma API HTTP Error",
+                        status_code=e.response.status_code,
+                        response=e.response.text,
+                        url=str(e.request.url)
+                    )
+                    raise
 
         # Use dedicated gemma_rate_limiter (200 RPM), NOT the shared gemini one
         return await gemma_rate_limiter.execute(_raw_call)

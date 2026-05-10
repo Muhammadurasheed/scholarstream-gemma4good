@@ -7,9 +7,13 @@ import { Scholarship } from '@/types/scholarship';
 
 interface MissionControlConsoleProps {
   opportunities?: Scholarship[];
+  userProfile?: UserProfile | null;
 }
 
-export const MissionControlConsole: React.FC<MissionControlConsoleProps> = ({ opportunities = [] }) => {
+export const MissionControlConsole: React.FC<MissionControlConsoleProps> = ({ 
+  opportunities = [],
+  userProfile = null
+}) => {
   const { status, missions } = useDiscoveryPulse();
   const [logs, setLogs] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -23,18 +27,22 @@ export const MissionControlConsole: React.FC<MissionControlConsoleProps> = ({ op
 
   // Initializing logs & Dynamic telemetry
   useEffect(() => {
+    const firstName = userProfile?.name?.split(' ')[0] || 'New Recruit';
+    const major = userProfile?.major || 'Generalist';
+    const interests = userProfile?.interests?.slice(0, 3).join('/') || 'Opportunities';
+
     const dynamicLogs = [
       "Initializing Cortex V3 'Deep Scout' Mission...",
       "Auth Verified: Gemma 4 Good Native Engine",
-      "Analyzing User Profile (Musa Ibrahim)...",
-      "Digital DNA identified: CS Undergraduate / AI Specialist",
+      `Analyzing User Profile (${firstName})...`,
+      `Digital DNA identified: ${major} Specialist`,
       "Geolocation strategy: 40/30/30 (Global/Continental/Local)",
       "Sentinel Patrolling Hidden Corners (Reddit, LinkedIn, X)...",
-      "[THINKING] User has strong interests in Blockchain/AI.",
-      "[THINKING] Targeting Ethereum Foundation & NVIDIA Research portals...",
+      `[THINKING] Identifying specialized portals for ${major}...`,
+      `[THINKING] Targeting high-signal domains for ${interests}...`,
       "[REASONING] Prioritizing .edu domains for Atomic Source authenticity.",
-      "[SYSTEM] Deep web scan initialization complete.",
-      "[SYSTEM] Real-time hunting stream connected."
+      "Deep web scan initialization complete.",
+      "Real-time hunting stream connected."
     ];
     
     let i = 0;
@@ -50,10 +58,10 @@ export const MissionControlConsole: React.FC<MissionControlConsoleProps> = ({ op
       } else {
         clearInterval(interval);
       }
-    }, 400); // Faster typing for better UX
+    }, 400);
 
     return () => clearInterval(interval);
-  }, []); // Run exactly once on mount!
+  }, [userProfile]); // Re-run if profile changes
 
   // Transform live missions into terminal logs
   useEffect(() => {

@@ -43,7 +43,7 @@ const App = () => (
                   <Route
                     path="/"
                     element={
-                      <PublicRoute>
+                      <PublicRoute shouldRedirect={false}>
                         <Landing />
                       </PublicRoute>
                     }

@@ -12,4 +12,4 @@ logger = structlog.get_logger()
 # This maintains the 'chat_service' name for existing imports but ensures 0% Gemini usage.
 chat_service = gemma_chat_service
 
-logger.info("⚡ Chat Service: GEMMA NATIVE REDIRECT ACTIVE")
+logger.info("Chat Service: GEMMA NATIVE REDIRECT ACTIVE")

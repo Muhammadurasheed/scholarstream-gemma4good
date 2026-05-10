@@ -100,7 +100,7 @@ class CortexFlinkProcessor:
                 count += 1
                 
             self._firestore_loaded = True
-            logger.info("🔄 Loaded persisted state from Firestore", 
+            logger.info("Loaded persisted state from Firestore", 
                        existing_count=count, 
                        cache_size=len(self.seen_opportunities))
                        

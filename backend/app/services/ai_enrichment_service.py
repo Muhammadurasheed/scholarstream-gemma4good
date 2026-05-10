@@ -24,7 +24,7 @@ class AIEnrichmentService:
     """
     
     def __init__(self):
-        logger.info("⚡ GEMMA ENRICHMENT SERVICE ACTIVE")
+        logger.info("GEMMA ENRICHMENT SERVICE ACTIVE")
     
     def clean_html(self, html_content: str) -> str:
         """Aggressively clean HTML to reduce token usage"""

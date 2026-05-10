@@ -198,12 +198,20 @@ async def get_matched_scholarships(user_id: str):
                     
                     # Compute fresh matches
                     matched = matching_service._filter_and_rank(all_opps, profile)
-                    logger.info("Match diagnostics", total_pool=len(all_opps), matched_count=len(matched), user_id=user_id)
                     
-                    if matched:
-                        # Save matches for next time
-                        await db.save_user_matches(user_id, [s.id for s in matched])
-                        scholarships = matched
+                    # FAANG-Grade Filtering: Only show relevant picks (> 60% match)
+                    # This prevents the "stale database" impression for non-tech users.
+                    scholarships = [s for s in matched if s.match_score >= 60]
+                    
+                    logger.info("Match diagnostics", 
+                        total_pool=len(all_opps), 
+                        highly_relevant=len(scholarships), 
+                        user_id=user_id
+                    )
+                    
+                    if scholarships:
+                        # Save relevant matches for next time
+                        await db.save_user_matches(user_id, [s.id for s in scholarships])
                         # Update last_match_at in profile record
                         await db.update_user_last_match_time(user_id, now)
                         logger.info("Auto-refresh match complete", confirmed_matches=len(scholarships))
@@ -217,13 +225,16 @@ async def get_matched_scholarships(user_id: str):
                     profile = UserProfile(**user_profile_data['profile'])
                     
                     # Re-calculate scores for up-to-the-minute accuracy
+                    scored_scholarships = []
                     for scholarship in scholarships:
                         score = matching_service.calculate_match_score(scholarship, profile)
-                        scholarship.match_score = score
-                        scholarship.match_tier = matching_service.get_match_tier(score)
+                        if score >= 60: # Maintain threshold on read
+                            scholarship.match_score = score
+                            scholarship.match_tier = matching_service.get_match_tier(score)
+                            scored_scholarships.append(scholarship)
                     
                     # Re-sort by score descending
-                    scholarships.sort(key=lambda x: x.match_score, reverse=True)
+                    scholarships = sorted(scored_scholarships, key=lambda x: x.match_score, reverse=True)
             except Exception as e:
                 logger.warning("Failed to re-calculate scores on read", error=str(e))
 

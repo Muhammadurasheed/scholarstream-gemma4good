@@ -159,16 +159,6 @@ async def map_form_fields(
 
     Uses Gemma to intelligently map form fields to user profile data
     Returns a dictionary mapping field selectors to suggested values
-
-    Example response:
-    {
-        "field_mappings": {
-            "#firstName": "John",
-            "#lastName": "Doe",
-            "#email": "john@example.com",
-            "#gpa": "3.8"
-        }
-    }
     """
     user_id = await verify_token(authorization)
 
@@ -179,7 +169,7 @@ async def map_form_fields(
 
         # FOCUS FILL MODE: If a specific target field is provided, generate content for it
         if request.target_field:
-            logger.info(f"✨ FOCUS FILL (Sparkle): Delegating to Copilot Service for '{request.target_field.get('name')}'")
+            logger.info(f"FOCUS FILL (Sparkle): Delegating to Copilot Service for '{request.target_field.get('name')}'")
             
             from app.services.copilot_service import copilot_service
             
@@ -358,10 +348,6 @@ async def copilot_chat(
     """
     Co-Pilot Chat Endpoint V2
     Handles multimodal RAG chat with FAANG-level knowledge base control.
-    
-    Key Features:
-    - mentioned_docs: Only use explicitly @mentioned documents
-    - include_profile: Toggle to exclude user profile from KB
     """
     user_id = await verify_token(authorization)
     

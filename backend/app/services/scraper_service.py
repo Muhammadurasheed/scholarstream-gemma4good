@@ -57,7 +57,7 @@ class OpportunityScraperService:
                 'Sentinel (navigator.py) → Target URLs',
                 'UniversalCrawlerService (crawler_service.py) → Playwright stealth',
                 'Kafka → Raw HTML streaming',
-                'Refinery (refinery.py) → Gemma AI extraction',
+                'Refinery (refinery.py) -> Gemma AI extraction',
                 'Enriched opportunities → Frontend WebSocket'
             ]
         }

@@ -206,12 +206,11 @@ legacy_rate_limiter = AdaptiveRateLimiter(
     max_backoff=60.0,    # Never wait more than 60s
 )
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Gemma Rate Limiter — high-throughput, for Vertex AI MaaS
 # Vertex AI MaaS has no hard RPM quota on Gemma — use it!
 # CRITICAL: This MUST be a separate instance from gemini_rate_limiter
 # so that other AI 429s do NOT throttle Gemma requests.
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# -------------------------------------------------------------------------
 gemma_rate_limiter = AdaptiveRateLimiter(
     max_rpm=200,         # Vertex AI MaaS supports high concurrency
     max_concurrent=20,   # Up to 20 parallel Gemma calls

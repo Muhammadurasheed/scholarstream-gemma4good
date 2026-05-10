@@ -177,9 +177,8 @@ class CopilotService:
         doc_section = ""
         if has_project_docs:
             if mentioned_docs and len(mentioned_docs) > 0:
-                doc_section = f"""✅ **EXPLICITLY MENTIONED DOCUMENTS** ({len(mentioned_docs)} docs): {', '.join(mentioned_docs)}
- 
-⚠️ CRITICAL: YOU MUST USE THIS DOCUMENT CONTENT BELOW TO ANSWER THE USER'S QUESTION.
+                doc_section = f"""[EXPLICITLY MENTIONED DOCUMENTS] ({len(mentioned_docs)} docs): {', '.join(mentioned_docs)}
+[WARNING] CRITICAL: YOU MUST USE THIS DOCUMENT CONTENT BELOW TO ANSWER THE USER'S QUESTION.
 DO NOT MAKE UP INFORMATION. USE THE ACTUAL CONTENT PROVIDED HERE:
  
 === BEGIN DOCUMENT CONTENT ===
@@ -189,23 +188,23 @@ DO NOT MAKE UP INFORMATION. USE THE ACTUAL CONTENT PROVIDED HERE:
 If the user is asking you to fill a field or help with an application, extract specific details 
 from the document content above (names, skills, experiences, projects) and use them verbatim."""
             else:
-                doc_section = f"""✅ DOCUMENTS AVAILABLE (Use this content):
+                doc_section = f"""[DOCUMENTS AVAILABLE] (Use this content):
  
 === BEGIN DOCUMENT CONTENT ===
 {sanitized_context}
 === END DOCUMENT CONTENT ==="""
         else:
-            doc_section = "❌ No valid project documents found. Suggest user upload their resume/project README using the + button."
+            doc_section = "[ERROR] No valid project documents found. Suggest user upload their resume/project README using the + button."
         
         # Build profile section
         profile_section = ""
         if include_profile and user_profile:
-            profile_section = f"""✅ USER PROFILE (INCLUDED - use this information):
+            profile_section = f"""[USER PROFILE] (INCLUDED - use this information):
 {json.dumps(user_profile, indent=2)}"""
         elif include_profile and not user_profile:
-            profile_section = "⚠️ Profile was requested but not available."
+            profile_section = "[WARNING] Profile was requested but not available."
         else:
-            profile_section = "❌ USER PROFILE (EXCLUDED by user preference) - DO NOT use any profile data. Only use document content."
+            profile_section = "[INFO] USER PROFILE (EXCLUDED by user preference) - DO NOT use any profile data. Only use document content."
         
         prompt = f"""
 You are the ScholarStream Co-Pilot: **{platform_persona['name']}**

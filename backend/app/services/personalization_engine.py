@@ -25,6 +25,11 @@ class PersonalizationEngine:
             'game development': ['game', 'Unity', '3D', 'graphics', 'Unreal Engine', 'game design', 'gaming', 'gamedev'],
             'robotics': ['robotics', 'automation', 'embedded systems', 'Arduino', 'ROS', 'mechatronics', 'IoT', 'hardware'],
             'healthcare tech': ['healthcare', 'medical', 'biotech', 'health informatics', 'telemedicine', 'healthtech', 'biomedical'],
+            'nursing': ['nursing', 'clinical', 'patient care', 'healthcare', 'nurse', 'hospital', 'medicine', 'health'],
+            'medicine': ['medical', 'medicine', 'clinical', 'physician', 'doctor', 'healthcare', 'pre-med', 'biology', 'mcat'],
+            'law': ['law', 'legal', 'justice', 'advocacy', 'policy', 'human rights', 'jurisprudence', 'attorney', 'paralegal'],
+            'fine arts': ['art', 'design', 'music', 'creative', 'exhibition', 'gallery', 'performance', 'visual arts', 'fine art'],
+            'humanities': ['history', 'philosophy', 'literature', 'languages', 'culture', 'anthropology', 'sociology', 'liberal arts'],
             'fintech': ['finance', 'banking', 'payments', 'trading', 'financial technology', 'fintech', 'defi'],
             'social impact': ['social good', 'nonprofit', 'education', 'accessibility', 'sustainability', 'impact', 'climate'],
             'entrepreneurship': ['startup', 'business', 'innovation', 'venture', 'founder', 'entrepreneur', 'pitch'],
@@ -38,6 +43,8 @@ class PersonalizationEngine:
             'software': ['software', 'engineering', 'developer', 'SaaS', 'tech', 'backend', 'frontend'],
             'math': ['math', 'mathematics', 'statistics', 'calculus', 'algebra', 'quantitative'],
             'design': ['design', 'ui', 'ux', 'product', 'figma', 'creative', 'graphics'],
+            'medical': ['medical', 'health', 'medicine', 'clinical', 'research', 'grant', 'fellowship'],
+            'nursing student': ['nursing', 'nurse', 'clinical', 'scrubs', 'healthcare', 'patient'],
         }
         self._gemini_client = None
     

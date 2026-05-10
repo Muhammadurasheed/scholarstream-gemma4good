@@ -38,14 +38,25 @@ class DiscoveryPulseService:
                 logger.warning("Pulse: Redis connection failed, falling back to Memory Vault", error=str(e))
                 self.redis = None
                 
-    def announce_mission(self, mission_id: str, target: str, status: str = "active"):
-        """Announce a new or updated mission"""
+    async def update_mission(self, mission_id: str, target: str, status: str = "active"):
+        """Broadcast mission status to the world"""
+        label = ""
+        if status == "active":
+            if "DNA" in target or "Analyzing" in target or "Geolocation" in target:
+                label = target # Keep system DNA logs as is
+            elif "Scanning" in target or "Patrolling" in target:
+                label = target
+            else:
+                label = f"Sentinel is patrolling {target}"
+        else:
+            label = f"Mission {status.capitalize()}"
+
         pulse_data = {
             "mission_id": mission_id,
             "target": target,
             "status": status,
             "timestamp": time.time(),
-            "label": f"Sentinel is patrolling {target}" if status == "active" else f"Mission {status}"
+            "label": label
         }
         
         # 1. Update Memory (Immediate & Reliable Fallback)

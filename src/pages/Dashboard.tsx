@@ -61,6 +61,7 @@ const getDefaultTab = (profileType: ReturnType<typeof deriveProfileType>): strin
 const Dashboard = () => {
   const { user } = useAuth();
   const location = useLocation();
+  const { status, missions } = useDiscoveryPulse();
   const {
     scholarships,
     stats,
@@ -80,6 +81,9 @@ const Dashboard = () => {
   );
   const [genesisMessage, setGenesisMessage] = useState('Deploying your AI agents...');
 
+  // User profile state - fetched from Firestore with localStorage fallback
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
   const profileType = useMemo(() => deriveProfileType(userProfile), [userProfile]);
   const defaultTab = useMemo(() => getDefaultTab(profileType), [profileType]);
   const [activeTab, setActiveTab] = useState('picks');
@@ -96,9 +100,6 @@ const Dashboard = () => {
     flushBuffer,
     justFlushedIds,
   } = useRealtimeOpportunities();
-
-  // User profile state - fetched from Firestore with localStorage fallback
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   // Fetch user profile from Firestore on mount
   useEffect(() => {
@@ -474,19 +475,24 @@ const Dashboard = () => {
           )}
 
           {/* Mission Control Console (Telemetry) */}
-          <MissionControlConsole opportunities={allOpportunities} />
+          <div className="hidden lg:block">
+            <MissionControlConsole 
+              opportunities={allOpportunities} 
+              userProfile={userProfile}
+            />
+          </div>
 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <StatsCard
               label="Total Matches"
-              value={stats.total_count}
+              value={allOpportunities.length}
               icon={Target}
               iconColor="text-primary"
             />
             <StatsCard
               label="Funding Potential"
-              value={formatCurrency(stats.total_value)}
+              value={formatCurrency(allOpportunities.reduce((sum, s) => sum + (s.amount || 0), 0))}
               icon={DollarSign}
               iconColor="text-emerald-500"
             />
@@ -564,7 +570,7 @@ const Dashboard = () => {
                 )}
 
                 <TabsContent value={activeTab} className="mt-0">
-                  {activeTab === 'picks' ? (
+                  {activeTab === 'picks' && groupedOpportunities.picks.length > 0 ? (
                     <CortexSourceGroup opportunities={groupedOpportunities.picks} />
                   ) : currentOpportunities && currentOpportunities.length > 0 ? (
                     view === 'grid' ? (
@@ -576,21 +582,45 @@ const Dashboard = () => {
                       <SimpleOpportunityGrid opportunities={currentOpportunities} />
                     )
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-20 text-center bg-card/30 rounded-3xl border-2 border-dashed border-border/50">
-                      <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                        <FileText className="w-8 h-8 text-muted-foreground" />
+                    <div className="flex flex-col items-center justify-center py-20 text-center bg-card/30 rounded-[2.5rem] border-2 border-dashed border-primary/20 relative overflow-hidden group">
+                      {/* Background Pulse Effect */}
+                      <div className="absolute inset-0 bg-primary/5 animate-pulse" />
+                      
+                      <div className="relative z-10 flex flex-col items-center">
+                        <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6 relative">
+                           <div className="absolute inset-0 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
+                           <Radar className="w-10 h-10 text-primary animate-pulse" />
+                        </div>
+                        
+                        <h3 className="text-2xl font-black tracking-tight text-foreground">
+                          {status === 'active' ? "Agent Fleet Deployed" : "Scanning Deep Web Signals"}
+                        </h3>
+                        
+                        <p className="text-muted-foreground max-w-md mx-auto mt-3 text-lg leading-relaxed">
+                          {status === 'active' 
+                            ? `Our Sentinel drones are currently scouring ${missions[0]?.target || 'global databases'} specifically for your ${deriveProfileType(userProfile)} DNA.`
+                            : "Cortex V3 is initializing your personalized hunting mission. New matches will appear here in real-time."}
+                        </p>
+
+                        {status === 'active' && (
+                          <div className="mt-8 px-6 py-3 bg-primary/10 rounded-full border border-primary/20 flex items-center gap-3">
+                            <span className="w-2 h-2 rounded-full bg-primary animate-ping" />
+                            <span className="text-sm font-bold text-primary uppercase tracking-widest">
+                              {missions[0]?.label || "Live Patrol Active"}
+                            </span>
+                          </div>
+                        )}
+
+                        {!status || status === 'idle' && (
+                          <Button 
+                            variant="outline" 
+                            className="mt-8 border-primary/20 hover:bg-primary/10 font-bold"
+                            onClick={() => window.location.reload()}
+                          >
+                            Refresh Pulse
+                          </Button>
+                        )}
                       </div>
-                      <h3 className="text-xl font-bold">No opportunities found</h3>
-                      <p className="text-muted-foreground max-w-md mx-auto mt-2">
-                        {searchQuery 
-                          ? `We couldn't find any results matching "${searchQuery}". Try broadening your search.`
-                          : "Cortex V3 is still scanning deep web signals. New matches will appear here in real-time."}
-                      </p>
-                      {searchQuery && (
-                        <Button variant="outline" className="mt-6" onClick={() => setSearchQuery('')}>
-                          Clear Search
-                        </Button>
-                      )}
                     </div>
                   )}
                 </TabsContent>

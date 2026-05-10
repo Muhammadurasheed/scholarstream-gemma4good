@@ -117,6 +117,10 @@ class ReaderLLM:
             
             data = robust_json_loads(raw_response)
             
+            if data is None:
+                logger.warning("Cortex Reader: No valid JSON data extracted from AI response", url=source_url)
+                return []
+            
             # Ensure it's a list
             if isinstance(data, dict):
                 data = [data]
@@ -153,7 +157,7 @@ class ReaderLLM:
                     continue
             
             logger.info(
-                "Reader LLM extraction complete",
+                "Cortex Reader: Agentic extraction loop starting",
                 source=source_url[:50],
                 extracted=len(opportunities),
                 platform=platform_hint

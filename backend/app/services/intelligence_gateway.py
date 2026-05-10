@@ -20,7 +20,7 @@ class IntelligenceGateway:
     """
 
     def __init__(self):
-        logger.info("⚡ Intelligence Gateway: GEMMA NATIVE MODE ACTIVE")
+        logger.info("Intelligence Gateway: GEMMA NATIVE MODE ACTIVE")
 
     async def generate_content(self, prompt: str, system_instruction: Optional[str] = None) -> str:
         """General purpose content generation via Gemma 4."""
@@ -28,7 +28,20 @@ class IntelligenceGateway:
             response = await gemma_service.generate_content_async(
                 prompt, system_instruction=system_instruction
             )
-            return response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if not response or "choices" not in response:
+                logger.warning("Gemma response empty or malformed")
+                return ""
+            
+            raw_content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if not raw_content:
+                return ""
+
+            data = robust_json_loads(raw_content)
+            if data is None:
+                logger.warning("Gemma content: Failed to parse JSON response")
+                return raw_content
+                
+            return raw_content
         except Exception as e:
             logger.error("Gemma content generation failed", error=str(e))
             return ""

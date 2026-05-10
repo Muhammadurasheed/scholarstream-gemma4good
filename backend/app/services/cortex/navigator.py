@@ -163,84 +163,60 @@ class Sentinel:
             # === PHASE 2: Build Hyper-Targeted Direct URLs from Profile ===
             targets = [
                 {"url": f"https://www.reddit.com/r/scholarships/search/?q={major_slug}+{top_interest}&sort=new&t=year",
-                 "label": f"[GLOBAL] Reddit Signals -- r/scholarships: {major} + {top_interest}", "platform": "Reddit"},
+                 "label": f"Scanning Reddit r/scholarships for {major} signals", "platform": "Reddit"},
                 {"url": f"https://www.reddit.com/r/cscareerquestions/search/?q=fellowship+grant+{major_slug}&sort=new",
-                 "label": f"[GLOBAL] Reddit Deep Dive -- r/cscareerquestions: fellowship + {major}", "platform": "Reddit"},
-                {"url": "https://ethereum.foundation/grants/",
-                 "label": "[GLOBAL] Ethereum Foundation -- Active Grant Portal", "platform": "Ethereum Foundation"},
-                {"url": "https://mlh.io/seasons/2026/events",
-                 "label": "[GLOBAL] MLH Season 2026 -- Live Hackathon Listing", "platform": "MLH"},
+                 "label": f"Deep Scanning r/cscareerquestions for {major} fellowships", "platform": "Reddit"},
                 {"url": "https://mastercardfdn.org/all/scholars/",
-                 "label": "[AFRICA] MasterCard Foundation Scholars Program", "platform": "MasterCard Foundation"},
+                 "label": "Analyzing MasterCard Foundation African Scholars portal", "platform": "MasterCard Foundation"},
                 {"url": f"https://www.linkedin.com/jobs/search/?keywords={major_slug}+fellowship+africa&f_WT=2",
-                 "label": f"[AFRICA] LinkedIn Bounties -- {major} Fellowship Africa", "platform": "LinkedIn"},
+                 "label": f"Patrolling LinkedIn for {major} opportunities in Africa", "platform": "LinkedIn"},
                 {"url": f"https://www.reddit.com/r/Nigeria/search/?q={major_slug}+scholarship+grant&sort=new",
-                 "label": f"[{country.upper()}] Reddit Hyper-Local -- {country} scholarships", "platform": "Reddit"},
-                {"url": "https://nitda.gov.ng/grants/",
-                 "label": f"[{country.upper()}] NITDA -- National IT Development Agency", "platform": "NITDA"},
-                {"url": "https://www.tetfund.gov.ng/",
-                 "label": f"[{country.upper()}] TETFund -- Tertiary Education Trust Fund", "platform": "TETFund"},
+                 "label": f"Hyper-Local Search: Nigeria r/scholarship for {major}", "platform": "Reddit"},
             ]
 
             # === PROFILE-TYPE AWARE TARGETS (Core Personalization Engine) ===
-            # Derives profile type from major + interests and adds domain-specific URLs.
-            # This ensures a medical student gets NIH/WHO results, not DevPost hackathons.
             major_lower = major.lower()
             interests_str = " ".join([i.lower() for i in interests])
             combined_profile = f"{major_lower} {interests_str}"
 
             if any(kw in combined_profile for kw in ["medicine", "medical", "health", "nursing", "pharmacy", "biology", "biochem", "clinical"]):
+                discovery_pulse.announce_mission(mission_id, f"[DNA MATCH] Nursing/Medical Profile detected. Prioritizing Life Science portals.", "active")
                 targets += [
                     {"url": "https://www.niaid.nih.gov/grants-contracts/training-fellowships",
-                     "label": "[MEDICAL] NIH NIAID — Clinical Research Fellowships", "platform": "NIH"},
+                     "label": "Scanning NIH NIAID Clinical Research Fellowships", "platform": "NIH"},
                     {"url": "https://www.hhmi.org/programs/gilliam-fellowships",
-                     "label": "[MEDICAL] HHMI Gilliam Fellowships for PhD Students", "platform": "HHMI"},
+                     "label": "Analyzing HHMI Gilliam Fellowships (Life Sciences)", "platform": "HHMI"},
                     {"url": "https://www.who.int/careers/fellowship-programmes",
-                     "label": "[MEDICAL] WHO Global Fellowship Programs", "platform": "WHO"},
+                     "label": "Patrolling World Health Organization (WHO) Global Fellowships", "platform": "WHO"},
                     {"url": f"https://www.reddit.com/r/medicalschool/search/?q=scholarship+fellowship+grant&sort=new",
-                     "label": "[MEDICAL] Reddit /r/medicalschool — Scholarships & Fellowships", "platform": "Reddit"},
+                     "label": "Searching r/medicalschool for niche medical grants", "platform": "Reddit"},
                 ]
-                logger.info("Deep Scout: Medical profile — added NIH/WHO/HHMI targets", mission_id=mission_id)
+            
+            elif any(kw in combined_profile for kw in ["computer", "software", "ai", "ml", "blockchain", "coding"]):
+                discovery_pulse.announce_mission(mission_id, f"[DNA MATCH] Tech/Engineering Profile detected. Prioritizing Hackathon & Bounty portals.", "active")
+                targets += [
+                    {"url": "https://ethereum.foundation/grants/",
+                     "label": "Scanning Ethereum Foundation Ecosystem Grants", "platform": "Ethereum Foundation"},
+                    {"url": "https://mlh.io/seasons/2026/events",
+                     "label": "Patrolling MLH Season 2026 Hackathons", "platform": "MLH"},
+                    {"url": "https://immunefi.com/explore",
+                     "label": "Analyzing Immunefi for security bounties", "platform": "Immunefi"},
+                ]
 
             elif any(kw in combined_profile for kw in ["art", "design", "music", "film", "fashion", "creative", "architecture"]):
+                discovery_pulse.announce_mission(mission_id, f"[DNA MATCH] Creative/Arts Profile detected. Prioritizing Residency & Arts Grant portals.", "active")
                 targets += [
                     {"url": "https://www.nea.gov/grants",
-                     "label": "[ARTS] NEA — National Endowment for the Arts Grants", "platform": "NEA"},
+                     "label": "Scanning NEA National Endowment for the Arts Grants", "platform": "NEA"},
                     {"url": "https://www.nyfa.org/awards-grants/",
-                     "label": "[ARTS] NYFA — New York Foundation for the Arts", "platform": "NYFA"},
-                    {"url": f"https://www.reddit.com/r/Design/search/?q=grant+scholarship+residency&sort=new",
-                     "label": "[ARTS] Reddit — Design grants & residencies", "platform": "Reddit"},
+                     "label": "Analyzing NYFA New York Foundation for the Arts", "platform": "NYFA"},
                 ]
-                logger.info("Deep Scout: Arts profile — added NEA/NYFA targets", mission_id=mission_id)
-
-            elif any(kw in combined_profile for kw in ["startup", "entrepreneur", "business", "venture", "founder"]):
-                targets += [
-                    {"url": "https://www.ycombinator.com/apply",
-                     "label": "[STARTUP] Y Combinator — Application Portal", "platform": "YCombinator"},
-                    {"url": "https://www.techstars.com/accelerators",
-                     "label": "[STARTUP] Techstars — Global Accelerator Programs", "platform": "Techstars"},
-                    {"url": "https://www.tonyelumelufoundation.org/teep",
-                     "label": "[STARTUP] Tony Elumelu Foundation — Africa Entrepreneurship", "platform": "TEF"},
-                ]
-                logger.info("Deep Scout: Entrepreneur profile — added YC/Techstars/TEF targets", mission_id=mission_id)
-
-            elif any(kw in combined_profile for kw in ["mechanical", "electrical", "civil", "chemical", "materials", "aerospace"]):
-                targets += [
-                    {"url": "https://www.ieee.org/education/scholarships/index.html",
-                     "label": "[ENGINEERING] IEEE — Engineering Scholarships & Awards", "platform": "IEEE"},
-                    {"url": "https://www.asme.org/engineering-topics/scholarships",
-                     "label": "[ENGINEERING] ASME — Mechanical Engineering Scholarships", "platform": "ASME"},
-                    {"url": "https://www.nsf.gov/funding/opportunities",
-                     "label": "[ENGINEERING] NSF — Research Funding Opportunities", "platform": "NSF"},
-                ]
-                logger.info("Deep Scout: Engineering profile — added IEEE/ASME/NSF targets", mission_id=mission_id)
 
             # Universal: Smart Google search for the user's specific major + year
             targets.append(
                 {"url": f"https://www.google.com/search?q={major_slug}+fellowship+scholarship+2026+apply",
-                 "label": f"[SMART] Google Signals — {major} fellowships 2026", "platform": "Google"}
+                 "label": f"Executing Smart Search: {major} fellowships 2026", "platform": "Google"}
             )
-
 
             logger.info("Deep Scout: Target manifest built", count=len(targets), mission_id=mission_id)
             await asyncio.sleep(1)
@@ -249,7 +225,10 @@ class Sentinel:
             scanned = 0
             for i, target in enumerate(targets):
                 try:
-                    discovery_pulse.announce_mission(mission_id, f"[DRONE-{i+1:02d}] {target['label']}", "active")
+                    # Update label to show sequence
+                    label = f"[DRONE-{i+1:02d}] {target['label']}"
+                    discovery_pulse.announce_mission(mission_id, label, "active")
+                    
                     logger.info("Deep Scout drone deployed", platform=target["platform"], url=target["url"][:60], mission_id=mission_id)
                     await crawler_service.crawl_and_stream([target["url"]], intent="deep_scout", mission_id=mission_id)
                     scanned += 1
@@ -257,7 +236,7 @@ class Sentinel:
                 except Exception as drone_err:
                     err_msg = str(drone_err) or type(drone_err).__name__
                     logger.warning("Deep Scout drone aborted", platform=target["platform"], error=err_msg[:80], mission_id=mission_id)
-                    discovery_pulse.announce_mission(mission_id, f"[ABORT] Rerouting from {target['platform']}: {err_msg[:40]}", "active")
+                    discovery_pulse.announce_mission(mission_id, f"[ABORT] Rerouting from {target['platform']}: Connection unstable", "active")
                     await asyncio.sleep(1)
 
             discovery_pulse.complete_mission(mission_id, found_count=scanned)

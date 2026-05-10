@@ -77,10 +77,17 @@ class GemmaMatchingService:
                 stream=False
             )
             
-            # Parse the response (Gemma returns Thinking block + Text)
-            # Our service already separates them if possible, but here we parse the text part
-            text_part = result.get('text', '')
-            thinking_part = result.get('thinking', '')
+            # Parse the response (Vertex AI MaaS returns OpenAI-compatible format)
+            choices = result.get('choices', [])
+            if not choices:
+                logger.error("Gemma response missing choices", result=result)
+                raise Exception("Empty response from Gemma")
+
+            message = choices[0].get('message', {})
+            text_part = message.get('content', '')
+            
+            # Maas Thinking mode might return 'thinking' field or include it in content
+            thinking_part = result.get('thinking', message.get('thinking', ''))
 
             # Extract structured parts using basic parsing
             report = {

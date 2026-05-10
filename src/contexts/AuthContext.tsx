@@ -42,7 +42,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onIdTokenChanged(auth, async (firebaseUser) => {
       // --- HACKATHON OVERRIDE: Prioritize Guest Mode ---
       if (localStorage.getItem('scholarstream_auth_token') === 'GUEST_TOKEN') {
-        console.log('✨ [AUTH] Guest Mode active, ignoring Firebase state changes');
+        console.log('✨ [AUTH] Guest Mode active, restoring demo persona');
+        setUser({
+          uid: 'demo_guest_user',
+          email: 'musa.demo@scholarstream.app',
+          name: 'Musa Ibrahim'
+        });
         setLoading(false);
         return;
       }

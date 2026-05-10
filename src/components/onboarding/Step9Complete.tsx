@@ -155,15 +155,23 @@ const Step9Complete: React.FC<Step9Props> = ({ data, onComplete }) => {
               <>
                 <div className="flex items-center gap-2 mb-4">
                   <TrendingUp className="h-5 w-5 text-primary" />
-                  <h3 className="text-lg font-bold text-foreground">Based on your profile, here's what we found:</h3>
+                  <h3 className="text-lg font-bold text-foreground">
+                    {counts.scholarships + counts.hackathons > 0 
+                      ? "Immediate matches from our Global Opportunity Pool:" 
+                      : "Searching our global database..."}
+                  </h3>
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                    <div className="text-2xl font-bold text-blue-600">{counts.scholarships}</div>
+                    <div className="text-2xl font-bold text-blue-600">
+                      {counts.scholarships}{counts.scholarships >= 15 ? "+" : ""}
+                    </div>
                     <div className="text-muted-foreground text-xs mt-1">Scholarships</div>
                   </div>
                   <div className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
-                    <div className="text-2xl font-bold text-purple-600">{counts.hackathons}</div>
+                    <div className="text-2xl font-bold text-purple-600">
+                      {counts.hackathons}{counts.hackathons >= 15 ? "+" : ""}
+                    </div>
                     <div className="text-muted-foreground text-xs mt-1">Hackathons</div>
                   </div>
                   <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
@@ -175,9 +183,14 @@ const Step9Complete: React.FC<Step9Props> = ({ data, onComplete }) => {
                     <div className="text-muted-foreground text-xs mt-1">Competitions</div>
                   </div>
                 </div>
-                <div className="mt-4 p-3 bg-success/10 border border-success/20 rounded-lg flex items-center justify-center gap-2">
-                  <DollarSign className="h-5 w-5 text-success" />
-                  <span className="font-bold text-lg text-success">Total potential value: ${totalValue.toLocaleString()}</span>
+                <div className="mt-4 p-3 bg-success/10 border border-success/20 rounded-lg flex flex-col items-center justify-center gap-1">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5 text-success" />
+                    <span className="font-bold text-lg text-success">Total potential value: ${totalValue.toLocaleString()}</span>
+                  </div>
+                  <p className="text-[10px] text-success/70 uppercase tracking-widest font-bold animate-pulse">
+                    Sentinel Deep Scout: Currently patrolling the web for more...
+                  </p>
                 </div>
               </>
             ) : (

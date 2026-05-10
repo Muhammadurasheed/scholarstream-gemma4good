@@ -159,6 +159,8 @@ const Onboarding = () => {
         updated_at: new Date()
       }, { merge: true });
 
+      console.log('✅ Onboarding status saved to Firestore');
+      
       localStorage.setItem('scholarstream_onboarding_complete', 'true');
       localStorage.setItem('scholarstream_profile', JSON.stringify(cleanData));
       localStorage.removeItem('scholarstream_onboarding_data');
@@ -166,12 +168,21 @@ const Onboarding = () => {
       // Navigate to dashboard with discovery trigger
       navigate('/dashboard', { state: { triggerDiscovery: true, profileData: cleanData } });
     } catch (error) {
-      console.error('Failed to save completion status:', error);
+      console.warn('⚠️ Failed to save completion status to Firestore:', error);
+      
+      // CRITICAL FALLBACK: For hackathon resilience, allow the user to proceed with LOCAL state
+      // if Firestore permissions are misconfigured.
+      localStorage.setItem('scholarstream_onboarding_complete', 'true');
+      localStorage.setItem('scholarstream_profile', JSON.stringify(sanitizeData(data)));
+      localStorage.removeItem('scholarstream_onboarding_data');
+
       toast({
-        title: 'Error saving profile',
-        description: 'Please try again.',
-        variant: 'destructive',
+        title: 'Profile saved locally',
+        description: 'Your profile is ready! (Note: Cloud sync failed, using local storage).',
+        variant: 'default',
       });
+
+      navigate('/dashboard', { state: { triggerDiscovery: true, profileData: sanitizeData(data) } });
     }
   };
 

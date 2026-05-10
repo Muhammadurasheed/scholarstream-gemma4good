@@ -110,7 +110,16 @@ async def verify_firebase_token(token: str) -> Optional[str]:
         decoded_token = auth.verify_id_token(token)
         return decoded_token['uid']
     except Exception as e:
-        logger.error("Token verification failed", error=str(e))
+        error_msg = str(e)
+        if "aud" in error_msg.lower():
+            logger.error(
+                "Firebase Auth Audience Mismatch",
+                error=error_msg,
+                hint="Your frontend is likely using credentials from a different Firebase project than the backend.",
+                expected_project=settings.firebase_project_id
+            )
+        else:
+            logger.error("Token verification failed", error=error_msg)
         return None
 
 
