@@ -5,247 +5,347 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 from app.services.crawler_service import crawler_service
+from app.services.tavily_service import tavily_service
 from app.services.discovery_pulse import discovery_pulse
 import random
 import string
+import time
 
 logger = structlog.get_logger()
 
-class Sentinel:
-    """
-    Proactive Background Worker (Cortex V2).
-    Delegates mission execution to Hunter Drones (UniversalCrawlerService).
-    """
-    
-    """
-    COMPREHENSIVE TARGET LIST V2 - All opportunity sources
-    These URLs are crawled with Playwright stealth to bypass anti-bot
-    EXPANDED: Added more hackathon platforms, bounties, and grants
-    """
-    TARGETS = [
-    # ======== HACKATHONS (Global) ========
-    # "https://devpost.com/hackathons", # REMOVED: using DevPostDeepScraper
-    "https://mlh.io/seasons/2026/events",
-        "https://angelhack.com/events/",
-        "https://www.hackquest.io/hackathons",
+# ============================================================
+# CURATED OPPORTUNITY PLATFORMS (Phase 1: High-Signal, Direct Crawl)
+# These are KNOWN listing pages where opportunities are guaranteed.
+# Organized by category for DNA-driven selection.
+# ============================================================
+PLATFORM_REGISTRY = {
+    "tech_hackathons": [
+        "https://mlh.io/seasons/2026/events",
         "https://devfolio.co/hackathons",
-        "https://hackerearth.com/challenges/",
-        "https://lablab.ai/event",  # AI Hackathons
-        # "https://unstop.com/hackathons",  # Indian ecosystem but global - REMOVED: using UnstopDeepScraper
-        "https://hackathon.io/events",  # Hackathon aggregator
+        "https://lablab.ai/event",
+        "https://www.hackquest.io/hackathons",
         "https://taikai.network/hackathons",
-        "https://www.bemyapp.com/events/",
-        "https://eventornado.com/",
-        "https://gitcoin.co/hackathons",
-        
-        # ======== BOUNTIES & BUG BOUNTIES ========
+    ],
+    "bounties_web3": [
         "https://immunefi.com/explore",
-        "https://gitcoin.co/grants-stack/explorer",
-        "https://hackerone.com/bug-bounty-programs",
-        "https://bugcrowd.com/programs",
-        "https://intigriti.com/researchers/bug-bounty-programs",
-        "https://bountycaster.xyz/",  # Web3 bounties
-        "https://earn.superteam.fun/bounties/",  # Solana ecosystem
-        "https://replit.com/bounties",
-        "https://www.algorand.foundation/bounties",
-        "https://dorahacks.io/bugbounty", # DoraHacks Bounties
-        "https://dorahacks.io/grant",  # DoraHacks Grants
-        
-        # ======== WEB3 GRANTS & ECOSYSTEMS ========
-        "https://questbook.xyz/",
-        "https://grants.gitcoin.co/",
-        "https://aave.com/grants/",
-        "https://compound.finance/grants",
-        "https://ethereum.org/en/community/grants/",
-        "https://solana.com/grants",
-        "https://near.org/grants/",
-        "https://stacks.org/grants",
-        
-        # ======== COMPETITIONS ========
-        "https://www.kaggle.com/competitions",
-        "https://codeforces.com/contests",
-        "https://topcoder.com/challenges",
-        "https://www.codechef.com/contests",
-        "https://atcoder.jp/contests",
-        "https://leetcode.com/contest/",
-        
-        # ======== SCHOLARSHIPS (Global Focus) ========
+        "https://earn.superteam.fun/bounties/",
+        "https://dorahacks.io/grant",
+    ],
+    "scholarships_global": [
         "https://bold.org/scholarships/",
-        "https://www.scholarships.com/financial-aid/college-scholarships/scholarship-directory",
         "https://www.fastweb.com/college-scholarships",
         "https://www.niche.com/colleges/scholarships/",
-        "https://www.unigo.com/scholarships/all",
-        "https://www.goingmerry.com/scholarships",
-        "https://www.scholarshipamerica.org/browse-scholarships/",
-        "https://www.internationalscholarships.com/",
-        
-        # ======== INTERNSHIPS (Tech Hubs) ========
-        "https://www.internships.com/search/posts?keywords=software%20engineering",
-        "https://www.levels.fyi/internships/",
-        "https://wellfound.com/role/l/internship/software-engineer",
+    ],
+    "competitions": [
+        "https://www.kaggle.com/competitions",
+    ],
+    "medical_health": [
+        "https://www.niaid.nih.gov/grants-contracts/training-fellowships",
+        "https://www.hhmi.org/programs/gilliam-fellowships",
+    ],
+    "creative_arts": [
+        "https://www.nyfa.org/awards-grants/",
+    ],
+}
 
-        # ======== DEEP WEB & SOCIAL (Cortex V3 Core) ========
-        "https://www.reddit.com/r/scholarships/",
-        "https://www.reddit.com/r/csMajors/",
-        "https://www.linkedin.com/jobs/search?keywords=fellowship",
-        "https://twitter.com/search?q=tech+fellowship+grant",
-    ]
+# DNA keyword → platform category mapping
+DNA_PLATFORM_MAP = {
+    "tech": ["tech_hackathons", "bounties_web3", "competitions", "scholarships_global"],
+    "computer": ["tech_hackathons", "bounties_web3", "competitions", "scholarships_global"],
+    "software": ["tech_hackathons", "bounties_web3", "competitions", "scholarships_global"],
+    "ai": ["tech_hackathons", "competitions", "scholarships_global"],
+    "blockchain": ["bounties_web3", "tech_hackathons"],
+    "web3": ["bounties_web3", "tech_hackathons"],
+    "cybersecurity": ["bounties_web3", "tech_hackathons", "competitions"],
+    "data": ["competitions", "tech_hackathons", "scholarships_global"],
+    "medical": ["medical_health", "scholarships_global"],
+    "medicine": ["medical_health", "scholarships_global"],
+    "nursing": ["medical_health", "scholarships_global"],
+    "health": ["medical_health", "scholarships_global"],
+    "biology": ["medical_health", "scholarships_global"],
+    "art": ["creative_arts", "scholarships_global"],
+    "design": ["creative_arts", "tech_hackathons", "scholarships_global"],
+    "music": ["creative_arts", "scholarships_global"],
+    "law": ["scholarships_global"],
+    "business": ["scholarships_global", "tech_hackathons"],
+    "finance": ["scholarships_global", "bounties_web3"],
+    "engineering": ["tech_hackathons", "competitions", "scholarships_global"],
+}
 
-    async def patrol(self):
+
+def _resolve_platforms_for_profile(user_profile: Dict[str, Any]) -> List[str]:
+    """
+    Given a user profile, resolve which platform URLs to crawl.
+    Returns a deduplicated, ordered list of URLs from PLATFORM_REGISTRY.
+    """
+    major = (user_profile.get("major") or "").lower()
+    interests = [i.lower() for i in (user_profile.get("interests") or [])]
+    combined_signals = f"{major} {' '.join(interests)}"
+    
+    selected_categories = set()
+    
+    for keyword, categories in DNA_PLATFORM_MAP.items():
+        if keyword in combined_signals:
+            selected_categories.update(categories)
+    
+    # Always include global scholarships
+    selected_categories.add("scholarships_global")
+    
+    # Resolve categories to URLs
+    urls = []
+    for cat in selected_categories:
+        urls.extend(PLATFORM_REGISTRY.get(cat, []))
+    
+    # Deduplicate while preserving order
+    return list(dict.fromkeys(urls))
+
+
+class Sentinel:
+    """
+    Proactive Background Worker (Cortex V3 — Revived).
+    Phase 1: DNA-driven crawl of CURATED platforms (guaranteed opportunity pages).
+    Phase 2: AI-powered Tavily search with domain constraints.
+    NO MORE blind 60-URL patrol. Every URL we hit is justified by user DNA.
+    """
+
+    async def aggregate_patrol(self):
         """
-        Deploy Hunter Drones to patrol targets.
-        Uses batched, staggered execution to prevent 429 rate limits.
+        [CORTEX V3] DNA-Driven Aggregate Patrol.
+        Only activates for patrolling users. If no users → no crawl (saves resources).
         """
-        mission_id = "patrol_" + "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
-        logger.info("Sentinel deploying Hunter Drones", target_count=len(self.TARGETS), mission_id=mission_id)
-        
-        discovery_pulse.announce_mission(mission_id, "Target Selection", "active")
+        mission_id = "aggregate_patrol_" + "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
         
         try:
-            # Staggered patrol: batch targets to avoid overwhelming Gemma
-            BATCH_SIZE = 5
-            INTER_BATCH_DELAY = 15  # seconds between batches
-            INTRA_BATCH_DELAY = 3   # seconds between URLs in a batch
+            # 1. Fetch DNA Signals from active user base
+            from app.database import db
+            active_users = await db.get_patrolling_users()
             
-            for i in range(0, len(self.TARGETS), BATCH_SIZE):
-                batch = self.TARGETS[i:i + BATCH_SIZE]
-                batch_num = (i // BATCH_SIZE) + 1
-                total_batches = (len(self.TARGETS) + BATCH_SIZE - 1) // BATCH_SIZE
-                
-                logger.info(
-                    f"Sentinel patrol batch {batch_num}/{total_batches}",
-                    urls=[u.split('//')[-1][:40] for u in batch],
-                    mission_id=mission_id,
+            if not active_users:
+                logger.info("No patrolling users found. Skipping aggregate patrol (no wasted crawls).")
+                await discovery_pulse.announce_mission(
+                    mission_id, "No active users with patrol enabled — Standing by", "completed"
                 )
-                
-                # Crawl batch with staggered starts
-                for url in batch:
-                    # Announce specific target to the dashboard for granular telemetry
-                    domain = url.split('//')[-1].split('/')[0]
-                    discovery_pulse.announce_mission(mission_id, f"Scanning {domain}", "active")
-                    
-                    await crawler_service.crawl_and_stream([url], intent="patrol", mission_id=mission_id)
-                    await asyncio.sleep(INTRA_BATCH_DELAY)
-                
-                # Pause between batches for rate limit breathing room
-                if i + BATCH_SIZE < len(self.TARGETS):
-                    await asyncio.sleep(INTER_BATCH_DELAY)
+                return
+
+            await discovery_pulse.announce_mission(mission_id, f"Aggregating DNA for {len(active_users)} patrolling users...", "active")
             
-            discovery_pulse.complete_mission(mission_id, found_count=len(self.TARGETS))
+            # 2. Build a merged profile from all active users
+            merged_profile = {"major": "", "interests": [], "country": ""}
+            majors = set()
+            all_interests = set()
+            for u in active_users:
+                profile = u.get('profile', {})
+                if profile.get('major'): majors.add(profile['major'])
+                for interest in profile.get('interests', []): all_interests.add(interest)
+            
+            # Use first user's major as primary, merge interests
+            merged_profile["major"] = list(majors)[0] if majors else "General Studies"
+            merged_profile["interests"] = list(all_interests)[:10]
+            
+            await discovery_pulse.announce_mission(
+                mission_id, 
+                f"Active Signals: {len(majors)} Majors / {len(all_interests)} Interests", 
+                "active"
+            )
+            
+            # 3. Phase 1: Crawl DNA-resolved platforms
+            platform_urls = _resolve_platforms_for_profile(merged_profile)
+            logger.info("Aggregate patrol: DNA-resolved platforms", count=len(platform_urls))
+            
+            for url in platform_urls[:12]:  # Max 12 platforms per patrol
+                domain = url.split('//')[-1].split('/')[0]
+                await discovery_pulse.announce_mission(mission_id, f"DNA-Targeted Hunt: {domain}", "active")
+                await crawler_service.crawl_and_stream([url], intent="aggregate_patrol", mission_id=mission_id)
+                await asyncio.sleep(5)
+
+            discovery_pulse.complete_mission(mission_id, found_count=len(platform_urls))
+            logger.info("Aggregate DNA patrol complete", target_count=len(platform_urls), mission_id=mission_id)
+
         except Exception as e:
-            logger.error("Sentinel patrol mission failed", error=str(e))
+            logger.error("Aggregate patrol failed", error=str(e))
             discovery_pulse.complete_mission(mission_id, found_count=0)
 
     async def deep_scout_patrol(self, user_profile):
         """
-        Cortex V3 Deep Scout -- Gemma-FREE Python Intelligence Engine.
-        Gemma is reserved for extraction only. We build hyper-targeted
-        direct URLs from the user's Digital DNA using pure Python logic.
-        100% resilient -- never fails due to LLM rate limits.
+        Cortex V3 Deep Scout — TWO-PHASE Intelligence Engine.
+        
+        Phase 1: Crawl curated platform pages resolved from user DNA (fast, reliable).
+        Phase 2: Tavily AI search with opportunity-focused queries (broader, AI-powered).
+        
+        Both phases feed the EventBroker → Refinery → WebSocket pipeline.
         """
         mission_id = "deep_scout_" + "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
 
-        major = user_profile.get("major", "Computer Science")
-        country = user_profile.get("country", "Nigeria")
-        interests = user_profile.get("interests", ["AI", "Blockchain"])
-        major_slug = major.replace(" ", "+").lower()
-        top_interest = (interests[0] if interests else "AI").replace(" ", "+").lower()
+        # Extract profile data
+        user_id = user_profile.get("id") or user_profile.get("uid")
+        is_demo = user_id == "demo_guest_user"
+
+        # Support nested 'profile' key (Firestore format)
+        profile_data = user_profile.get("profile", user_profile) if isinstance(user_profile, dict) else user_profile
+        major = profile_data.get("major", "Computer Science")
+        country = profile_data.get("country", "Nigeria")
+        interests = profile_data.get("interests", ["AI", "Blockchain"])
+        academic_status = profile_data.get("academic_status", "Undergraduate")
+        
+        if is_demo:
+             await discovery_pulse.announce_mission(mission_id, "Judge Mode Activated: Deploying Ultra-Priority Drones", "active")
+
+        scanned = 0
 
         try:
-            # === PHASE 1: Profile Analysis ===
-            discovery_pulse.announce_mission(mission_id, f"[CORTEX] Analyzing Digital DNA: {major} / {country}", "active")
-            logger.info("Deep Scout: Digital DNA extracted", major=major, country=country, interests=interests[:3], mission_id=mission_id)
-            await asyncio.sleep(1)
-
-            discovery_pulse.announce_mission(mission_id, f"[CORTEX] Geolocation strategy: 40% Global / 30% Africa / 30% {country}", "active")
-            await asyncio.sleep(1)
-
-            # === PHASE 2: Build Hyper-Targeted Direct URLs from Profile ===
-            targets = [
-                {"url": f"https://www.reddit.com/r/scholarships/search/?q={major_slug}+{top_interest}&sort=new&t=year",
-                 "label": f"Scanning Reddit r/scholarships for {major} signals", "platform": "Reddit"},
-                {"url": f"https://www.reddit.com/r/cscareerquestions/search/?q=fellowship+grant+{major_slug}&sort=new",
-                 "label": f"Deep Scanning r/cscareerquestions for {major} fellowships", "platform": "Reddit"},
-                {"url": "https://mastercardfdn.org/all/scholars/",
-                 "label": "Analyzing MasterCard Foundation African Scholars portal", "platform": "MasterCard Foundation"},
-                {"url": f"https://www.linkedin.com/jobs/search/?keywords={major_slug}+fellowship+africa&f_WT=2",
-                 "label": f"Patrolling LinkedIn for {major} opportunities in Africa", "platform": "LinkedIn"},
-                {"url": f"https://www.reddit.com/r/Nigeria/search/?q={major_slug}+scholarship+grant&sort=new",
-                 "label": f"Hyper-Local Search: Nigeria r/scholarship for {major}", "platform": "Reddit"},
-            ]
-
-            # === PROFILE-TYPE AWARE TARGETS (Core Personalization Engine) ===
-            major_lower = major.lower()
-            interests_str = " ".join([i.lower() for i in interests])
-            combined_profile = f"{major_lower} {interests_str}"
-
-            if any(kw in combined_profile for kw in ["medicine", "medical", "health", "nursing", "pharmacy", "biology", "biochem", "clinical"]):
-                discovery_pulse.announce_mission(mission_id, f"[DNA MATCH] Nursing/Medical Profile detected. Prioritizing Life Science portals.", "active")
-                targets += [
-                    {"url": "https://www.niaid.nih.gov/grants-contracts/training-fellowships",
-                     "label": "Scanning NIH NIAID Clinical Research Fellowships", "platform": "NIH"},
-                    {"url": "https://www.hhmi.org/programs/gilliam-fellowships",
-                     "label": "Analyzing HHMI Gilliam Fellowships (Life Sciences)", "platform": "HHMI"},
-                    {"url": "https://www.who.int/careers/fellowship-programmes",
-                     "label": "Patrolling World Health Organization (WHO) Global Fellowships", "platform": "WHO"},
-                    {"url": f"https://www.reddit.com/r/medicalschool/search/?q=scholarship+fellowship+grant&sort=new",
-                     "label": "Searching r/medicalschool for niche medical grants", "platform": "Reddit"},
-                ]
-            
-            elif any(kw in combined_profile for kw in ["computer", "software", "ai", "ml", "blockchain", "coding"]):
-                discovery_pulse.announce_mission(mission_id, f"[DNA MATCH] Tech/Engineering Profile detected. Prioritizing Hackathon & Bounty portals.", "active")
-                targets += [
-                    {"url": "https://ethereum.foundation/grants/",
-                     "label": "Scanning Ethereum Foundation Ecosystem Grants", "platform": "Ethereum Foundation"},
-                    {"url": "https://mlh.io/seasons/2026/events",
-                     "label": "Patrolling MLH Season 2026 Hackathons", "platform": "MLH"},
-                    {"url": "https://immunefi.com/explore",
-                     "label": "Analyzing Immunefi for security bounties", "platform": "Immunefi"},
-                ]
-
-            elif any(kw in combined_profile for kw in ["art", "design", "music", "film", "fashion", "creative", "architecture"]):
-                discovery_pulse.announce_mission(mission_id, f"[DNA MATCH] Creative/Arts Profile detected. Prioritizing Residency & Arts Grant portals.", "active")
-                targets += [
-                    {"url": "https://www.nea.gov/grants",
-                     "label": "Scanning NEA National Endowment for the Arts Grants", "platform": "NEA"},
-                    {"url": "https://www.nyfa.org/awards-grants/",
-                     "label": "Analyzing NYFA New York Foundation for the Arts", "platform": "NYFA"},
-                ]
-
-            # Universal: Smart Google search for the user's specific major + year
-            targets.append(
-                {"url": f"https://www.google.com/search?q={major_slug}+fellowship+scholarship+2026+apply",
-                 "label": f"Executing Smart Search: {major} fellowships 2026", "platform": "Google"}
+            # =========================================================
+            # PHASE 1: Curated Platform Crawl (DNA-Resolved)
+            # Fast, reliable — guaranteed to hit real opportunity pages.
+            # =========================================================
+            await discovery_pulse.announce_mission(
+                mission_id, "[PHASE 1] Analyzing Digital DNA — Selecting target platforms...", "active"
             )
 
-            logger.info("Deep Scout: Target manifest built", count=len(targets), mission_id=mission_id)
+            platform_urls = _resolve_platforms_for_profile(profile_data)
+            logger.info("Deep Scout Phase 1: DNA-resolved platforms", count=len(platform_urls), user_id=user_id)
+
+            # Crawl top 8 most relevant platforms
+            for i, url in enumerate(platform_urls[:8]):
+                domain = url.split('//')[-1].split('/')[0]
+                await discovery_pulse.announce_mission(
+                    mission_id, f"[PHASE 1] Deploying drone to {domain}", "active"
+                )
+                await crawler_service.crawl_and_stream([url], intent="deep_scout_phase1", mission_id=mission_id)
+                scanned += 1
+                await asyncio.sleep(3)
+
+            # =========================================================
+            # PHASE 2: AI-Powered Tavily Discovery (DNA-Targeted Queries)
+            # Broader search with opportunity-focused constraints.
+            # =========================================================
+            await discovery_pulse.announce_mission(
+                mission_id, "[PHASE 2] Generating AI-powered search strategy...", "active"
+            )
+
+            # Get Gemma's hunt strategy
+            from app.services.gemma_service import gemma_service
+            try:
+                strategy = await gemma_service.generate_hunt_strategy({
+                    "major": major,
+                    "interests": interests,
+                    "country": country,
+                    "academic_status": academic_status,
+                })
+                thought = strategy.get("thought", f"Searching for {major} opportunities globally.")
+                search_queries = strategy.get("search_queries", [])
+            except Exception as gemma_err:
+                logger.warning("Deep Scout: Strategy generation failed, using DNA Fallback", error=str(gemma_err))
+                thought = f"Using DNA-driven fallback for {major} in {country}."
+                major_lower = major.lower().replace(" ", "+")
+                top_interest = (interests[0] if interests else "technology").lower()
+                search_queries = [
+                    f"{major} scholarships for {country} students 2025 2026 apply now",
+                    f"{top_interest} hackathons 2025 2026 registration open",
+                    f"fully funded {major} fellowships {country} deadline",
+                    f"{major} grants for students apply {country}",
+                ]
+            
+            await discovery_pulse.announce_mission(
+                mission_id, f"[PHASE 2] DNA Analysis Complete", "active", 
+                payload={"thought": thought}
+            )
+            logger.info("Deep Scout: Strategy generated", thought=thought, queries=search_queries[:3])
             await asyncio.sleep(1)
 
-            # === PHASE 3: Execute Drone Missions with Granular Telemetry ===
-            scanned = 0
-            for i, target in enumerate(targets):
+            # Execute Tavily searches with domain constraints
+            from app.main import broker
+            from app.config import settings
+
+            for i, query in enumerate(search_queries[:4]):  # Max 4 queries
                 try:
-                    # Update label to show sequence
-                    label = f"[DRONE-{i+1:02d}] {target['label']}"
-                    discovery_pulse.announce_mission(mission_id, label, "active")
+                    label = f"[SEARCH-{i+1:02d}] AI-Scout: {query[:50]}..."
+                    await discovery_pulse.announce_mission(
+                        mission_id, label, "active", 
+                        payload={"thought": f"Searching the web: {query}"}
+                    )
                     
-                    logger.info("Deep Scout drone deployed", platform=target["platform"], url=target["url"][:60], mission_id=mission_id)
-                    await crawler_service.crawl_and_stream([target["url"]], intent="deep_scout", mission_id=mission_id)
-                    scanned += 1
-                    await asyncio.sleep(3)
-                except Exception as drone_err:
-                    err_msg = str(drone_err) or type(drone_err).__name__
-                    logger.warning("Deep Scout drone aborted", platform=target["platform"], error=err_msg[:80], mission_id=mission_id)
-                    discovery_pulse.announce_mission(mission_id, f"[ABORT] Rerouting from {target['platform']}: Connection unstable", "active")
-                    await asyncio.sleep(1)
+                    # Use Tavily with domain constraints (blocks research/blog sites)
+                    results = await tavily_service.search_opportunities(query, max_results=5)
+                    
+                    for j, result in enumerate(results):
+                        scanned += 1
+                        res_url = result.get("url", "")
+                        res_title = result.get("title", "Unknown")[:60]
+                        
+                        await discovery_pulse.announce_mission(
+                            mission_id, f"[FOUND-{scanned:02d}] {res_title}", "active"
+                        )
+                        
+                        # Transmit to Refinery via EventBroker
+                        payload = {
+                            "url": res_url,
+                            "title": result.get("title"),
+                            "html": result.get("raw_content") or result.get("content"),
+                            "crawled_at": time.time(),
+                            "source": "Tavily AI",
+                            "intent": "deep_scout_phase2",
+                            "agent_type": "Tavily-Scout-V2",
+                            "mission_id": mission_id
+                        }
+                        
+                        await broker.publish(
+                            topic=settings.topic_raw_html,
+                            key=res_url,
+                            payload=payload
+                        )
+                        
+                    await asyncio.sleep(2)
+                except Exception as search_err:
+                    logger.error("Tavily search iteration failed", error=str(search_err))
+                    discovery_pulse.report_challenge(mission_id, f"Search failure: {str(search_err)[:50]}")
 
             discovery_pulse.complete_mission(mission_id, found_count=scanned)
-            logger.info("Deep Scout patrol complete", scanned=scanned, total=len(targets), mission_id=mission_id)
+            logger.info("Deep Scout patrol complete", scanned=scanned, mission_id=mission_id)
+            
+            # === ZERO-DB GENESIS: Mark first hunt complete ===
+            if user_id and scanned > 0:
+                try:
+                    from app.database import db
+                    await db.mark_first_hunt_complete(user_id)
+                    logger.info("First hunt complete flag set", user_id=user_id, drones_deployed=scanned)
+                except Exception as flag_err:
+                    logger.warning("Could not set first_hunt_complete flag", error=str(flag_err))
 
         except Exception as e:
             err_msg = str(e) or type(e).__name__ or "UnknownError"
             logger.error("Deep Scout mission failed", error=err_msg, mission_id=mission_id)
             discovery_pulse.complete_mission(mission_id, found_count=0)
+
+    async def heavy_hunt(self, platforms: List[str] = None):
+        """
+        Manual high-intensity hunt for specific platforms.
+        V2: Uses PLATFORM_REGISTRY instead of blind hardcoded TARGETS.
+        """
+        mission_id = "heavy_hunt_" + "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        logger.info("Sentinel deploying HEAVY HUNT mission", platforms=platforms, mission_id=mission_id)
+        
+        await discovery_pulse.announce_mission(mission_id, "Heavy Hunt Mission Deployed", "active")
+        
+        # Collect all platform URLs
+        all_urls = []
+        for category_urls in PLATFORM_REGISTRY.values():
+            all_urls.extend(category_urls)
+        all_urls = list(dict.fromkeys(all_urls))  # Deduplicate
+        
+        # Filter by platform name if specified
+        if platforms:
+            all_urls = [t for t in all_urls if any(p.lower() in t.lower() for p in platforms)]
+            
+        for url in all_urls:
+            try:
+                domain = url.split('//')[-1].split('/')[0]
+                await discovery_pulse.announce_mission(mission_id, f"Scanning {domain}", "active")
+                await crawler_service.crawl_and_stream([url], intent="heavy_hunt", mission_id=mission_id)
+            except Exception as e:
+                logger.error("Heavy Hunt drone failure", url=url, error=str(e))
+                
+        discovery_pulse.complete_mission(mission_id, found_count=len(all_urls))
+        logger.info("Heavy Hunt mission complete", mission_id=mission_id)
 
 
 class Scout:
@@ -256,41 +356,50 @@ class Scout:
     
     async def execute_mission(self, query: str) -> List[Dict[str, Any]]:
         """
-        Execute a targeted search mission.
+        Execute a targeted search mission via Tavily AI.
         """
         mission_id = "scout_" + "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
-        logger.info("Scout dispatching drone squad", mission=query, mission_id=mission_id)
+        logger.info("Scout dispatching Tavily drone", mission=query, mission_id=mission_id)
         
-        discovery_pulse.announce_mission(mission_id, f"Searching: {query}", "active")
+        await discovery_pulse.announce_mission(mission_id, f"Executing Targeted AI Hunt: {query}", "active", payload={"thought": f"I am using Tavily AI to find exact matches for '{query}'."})
         
-        # 1. FAANG-Grade Query Expansion (Dorks)
-        def generate_dorks(q: str):
-            q_clean = q.replace(' ', '+')
-            return [
-                # Atomic Source Hunters (Bypassing Aggregators)
-                f"https://duckduckgo.com/?q={q_clean}+site:*.edu+2026",
-                f"https://duckduckgo.com/?q={q_clean}+site:*.gov+2026",
-                f"https://duckduckgo.com/?q={q_clean}+filetype:pdf",
-                f"https://duckduckgo.com/?q={q_clean}+'apply+here'+2026",
-                f"https://duckduckgo.com/?q={q_clean}+'submission+portal'+2026",
-                # The "Hidden Corners" (Deep Web Signals)
-                f"https://duckduckgo.com/?q=site:reddit.com+{q_clean}+opportunity",
-                f"https://duckduckgo.com/?q=site:linkedin.com/posts+{q_clean}+hackathon",
-                f"https://duckduckgo.com/?q=site:x.com+{q_clean}+'register'+now",
-                # Niche/Ecosystem Hubs (Only the high-signal ones)
-                f"https://www.google.com/search?q=site:gitcoin.co+{q_clean}",
-                f"https://www.google.com/search?q=site:bounties.network+{q_clean}",
-            ]
-        
-        search_urls = generate_dorks(query)
-        
-        # 2. Dispatch Drones
-        # Note: crawl_and_stream handles browser context and stealth
         try:
-            await crawler_service.crawl_and_stream(search_urls, intent="scout_search", mission_id=mission_id)
-            return [{"url": u, "status": "dispatched"} for u in search_urls]
+            # 1. Execute Tavily Search with domain constraints
+            results = await tavily_service.search_opportunities(query, max_results=10)
+            
+            # 2. Process results
+            found_data = []
+            from app.main import broker
+            from app.config import settings
+            
+            for result in results:
+                url = result.get("url")
+                title = result.get("title")
+                
+                payload = {
+                    "url": url,
+                    "title": title,
+                    "html": result.get("raw_content") or result.get("content"),
+                    "crawled_at": time.time(),
+                    "source": "Tavily Scout",
+                    "intent": "scout_search",
+                    "agent_type": "Tavily-Scout-V2",
+                    "mission_id": mission_id
+                }
+                
+                await broker.publish(
+                    topic=settings.topic_raw_html,
+                    key=url,
+                    payload=payload
+                )
+                found_data.append({"url": url, "title": title})
+            
+            discovery_pulse.complete_mission(mission_id, found_count=len(found_data))
+            return found_data
+            
         except Exception as e:
-            logger.error("Scout mission failed", error=str(e))
+            logger.error("Scout Tavily mission failed", error=str(e))
+            discovery_pulse.report_challenge(mission_id, f"Scout failure: {str(e)[:50]}")
             return []
 
 # Global Instances

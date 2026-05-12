@@ -11,7 +11,7 @@ export const useScholarships = () => {
   const queryClient = useQueryClient();
 
   // Local state for discovery UI (since it's transient)
-  const [discoveryStatus, setDiscoveryStatus] = useState<'idle' | 'processing' | 'completed'>('idle');
+  const [discoveryStatus, setDiscoveryStatus] = useState<'idle' | 'processing' | 'completed' | 'genesis'>('idle');
   const [discoveryProgress, setDiscoveryProgress] = useState(0);
 
   // 1. Main Query: Fetch Matched Scholarships
@@ -31,6 +31,8 @@ export const useScholarships = () => {
 
   const scholarships = matchedData?.scholarships || [];
   const lastUpdated = matchedData?.last_updated || '';
+  const thought = matchedData?.thought || '';
+  const backendDiscoveryStatus = matchedData?.discovery_status || 'idle';
 
   // Calculate base stats
   const stats: DashboardStats = {
@@ -209,5 +211,7 @@ export const useScholarships = () => {
     startApplication,
     refreshScholarships,
     triggerDiscovery,
+    thought,
+    backendDiscoveryStatus,
   };
 };

@@ -1,7 +1,8 @@
-import { User, FileText, ClipboardList, Bookmark, ChevronRight, Briefcase } from 'lucide-react';
+import { User, FileText, ClipboardList, Bookmark, ChevronRight, Briefcase, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
+import { apiService } from '@/services/api';
 
 interface QuickAction {
   id: string;
@@ -25,6 +26,14 @@ export const QuickActionsWidget = () => {
       action: 'Build',
       path: '/profile?tab=resume',
       variant: 'default',
+    },
+    {
+      id: 'purge',
+      icon: Trash2,
+      title: 'Reset Discovery Pulse',
+      description: 'Clear the real-time telemetry terminal',
+      action: 'Reset',
+      variant: 'outline',
     },
     {
       id: 'tracker',
@@ -55,7 +64,18 @@ export const QuickActionsWidget = () => {
     },
   ];
 
-  const handleAction = (action: QuickAction) => {
+  const handleAction = async (action: QuickAction) => {
+    if (action.id === 'purge') {
+      try {
+        await apiService.purgeDiscoveryPulse();
+        // Force a UI refresh if needed, though polling will pick it up
+        window.location.reload(); 
+      } catch (err) {
+        console.error('Failed to purge pulse', err);
+      }
+      return;
+    }
+
     if (action.path) {
       navigate(action.path);
     } else {

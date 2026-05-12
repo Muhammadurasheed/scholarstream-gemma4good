@@ -38,7 +38,7 @@ class OpportunityMatchingService:
             cached_opportunities = await db.get_all_scholarships()
             
             if cached_opportunities:
-                matched = self._filter_and_rank(cached_opportunities, user_profile)
+                matched = await self._filter_and_rank(cached_opportunities, user_profile)
                 if matched:
                     scholarship_ids = [s.id for s in matched]
                     await db.save_user_matches(user_id, scholarship_ids)
@@ -89,14 +89,14 @@ class OpportunityMatchingService:
             opportunities = []
             for opp_data in raw_opportunities:
                 try:
-                    scholarship = self._convert_to_scholarship(opp_data, user_profile)
+                    scholarship = await self._convert_to_scholarship(opp_data, user_profile)
                     if scholarship:
                         opportunities.append(scholarship)
                 except Exception as e:
                     logger.error("Failed to convert opportunity", error=str(e))
             
             # Step 5: Filter and rank
-            matched_opportunities = self._filter_and_rank(opportunities, user_profile)
+            matched_opportunities = await self._filter_and_rank(opportunities, user_profile)
             
             # Step 6: Agentic Augmentation (Phase 3 Moat)
             # Pick the top 5 high-potential matches and generate a deep counselor report
@@ -140,12 +140,12 @@ class OpportunityMatchingService:
             logger.error("Background discovery failed", error=str(e), job_id=job_id)
             await db.update_job_status(job_id, "failed", 0)
     
-    def _convert_to_scholarship(self, opp_data: Dict[str, Any], user_profile: UserProfile) -> Optional[Scholarship]:
+    async def _convert_to_scholarship(self, opp_data: Dict[str, Any], user_profile: UserProfile) -> Optional[Scholarship]:
         """Convert raw opportunity to Scholarship model"""
         from app.services.opportunity_converter import convert_to_scholarship
-        return convert_to_scholarship(opp_data, user_profile)
+        return await convert_to_scholarship(opp_data, user_profile)
     
-    def calculate_match_score(self, opportunity: Scholarship, profile: UserProfile) -> float:
+    async def calculate_match_score(self, opportunity: Scholarship, profile: UserProfile) -> float:
         """Use PersonalizationEngine for proper scoring"""
         from app.services.personalization_engine import personalization_engine
         
@@ -159,9 +159,9 @@ class OpportunityMatchingService:
             'requirements': opportunity.requirements.model_dump() if hasattr(opportunity.requirements, 'model_dump') else {},
         }
         
-        return personalization_engine.calculate_personalized_score(opp_dict, profile)
+        return await personalization_engine.calculate_personalized_score(opp_dict, profile)
     
-    def _filter_and_rank(
+    async def _filter_and_rank(
         self,
         opportunities: List[Scholarship],
         user_profile: UserProfile
@@ -186,7 +186,7 @@ class OpportunityMatchingService:
                     pass  # Keep if unparseable
             
             # Calculate score using PersonalizationEngine
-            score = self.calculate_match_score(opp, user_profile)
+            score = await self.calculate_match_score(opp, user_profile)
             opp.match_score = int(round(score))
             
             # Determine match tier

@@ -256,14 +256,24 @@ class UniversalCrawlerService:
                 await page.evaluate("window.scrollBy(0, 1500)")
                 await asyncio.sleep(1.5)
             
-            # Wait for content to stabilize
+            # RESILIENT SPA HYDRATION: Wait for DOM size stabilization
             try:
-                # RADICAL: Added a 2s 'Snap Wait' for SPA hydration stabilization
-                await asyncio.sleep(2.0)
-                await page.wait_for_load_state("networkidle", timeout=10000)
-            except:
-                pass 
-
+                previous_size = 0
+                stable_count = 0
+                for _ in range(10): # Max 15 seconds wait
+                    await asyncio.sleep(1.5)
+                    current_size = len(await page.content())
+                    if current_size > 5000 and abs(current_size - previous_size) < 100:
+                        stable_count += 1
+                        if stable_count >= 2: # Stable for 3 seconds
+                            logger.debug("DOM stabilized", url=url, size=current_size)
+                            break
+                    else:
+                        stable_count = 0
+                    previous_size = current_size
+            except Exception as e:
+                logger.debug("DOM stabilization check failed, continuing", error=str(e))
+                
             # EXTRACT with retry logic for navigation errors (TAIKAI fix)
             content = None
             title = None
@@ -405,13 +415,25 @@ class UniversalCrawlerService:
                 # Additional wait for specific slow sites
                 SPA_HEAVY_SITES = ['taikai.network', 'mlh.io', 'hackquest.io', 'dorahacks.io', 'kaggle.com', 'devfolio.co']
                 if any(domain in url for domain in SPA_HEAVY_SITES):
-                    await asyncio.sleep(4)  # Extra 4s for heavy SPAs to fully hydrate
                     # Extra scroll to trigger lazy loading
                     try:
                         await page.evaluate("window.scrollBy(0, document.body.scrollHeight)")
-                        await asyncio.sleep(1.5)
                     except:
                         pass
+                        
+                    # RESILIENT SPA HYDRATION: Wait for DOM size stabilization
+                    previous_size = 0
+                    stable_count = 0
+                    for _ in range(8): # Max 12 seconds wait
+                        await asyncio.sleep(1.5)
+                        current_size = len(await page.content())
+                        if current_size > 2000 and abs(current_size - previous_size) < 100:
+                            stable_count += 1
+                            if stable_count >= 2:
+                                break
+                        else:
+                            stable_count = 0
+                        previous_size = current_size
                 
                 content = await page.content()
                 

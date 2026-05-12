@@ -141,7 +141,7 @@ Rules:
                 final_text = summary_resp["choices"][0]["message"]["content"]
 
             # Post-process opportunities (Ranking & Diversity)
-            ranked_opps = self._rank_opportunities(found_opportunities, profile)
+            ranked_opps = await self._rank_opportunities(found_opportunities, profile)
 
             return {
                 'message': final_text,
@@ -191,7 +191,7 @@ Rules:
     # LOGIC HELPERS (Gemma Optimized)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    def _rank_opportunities(self, opps: List[Dict], profile: Dict) -> List[Dict]:
+    async def _rank_opportunities(self, opps: List[Dict], profile: Dict) -> List[Dict]:
         user_profile_obj = None
         try: user_profile_obj = UserProfile(**profile) if profile else None
         except Exception: pass
@@ -204,7 +204,7 @@ Rules:
             
             score = 50
             if user_profile_obj:
-                try: score = personalization_engine.calculate_personalized_score(opp, user_profile_obj)
+                try: score = await personalization_engine.calculate_personalized_score(opp, user_profile_obj)
                 except Exception: score = opp.get('match_score', 50)
             
             results.append({**opp, 'match_score': int(score), 'type': self._infer_type(opp)})

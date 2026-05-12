@@ -13,7 +13,7 @@ MatchTier = Literal["Excellent", "Good", "Fair", "Poor"]
 PriorityLevel = Literal["URGENT", "HIGH", "MEDIUM", "LOW"]
 CompetitionLevel = Literal["Low", "Medium", "High"]
 SourceType = Literal["scraped", "ai_discovered", "curated"]
-DiscoveryStatus = Literal["idle", "processing", "completed", "failed"]
+DiscoveryStatus = Literal["idle", "processing", "completed", "failed", "genesis"]
 
 
 # User Profile Models
@@ -194,6 +194,8 @@ class MatchedScholarshipsResponse(BaseModel):
     scholarships: List[Scholarship]
     total_value: float
     last_updated: str  # ISO format datetime string
+    discovery_status: Optional[DiscoveryStatus] = "idle"
+    thought: Optional[str] = None
 
 
 class SaveScholarshipRequest(BaseModel):

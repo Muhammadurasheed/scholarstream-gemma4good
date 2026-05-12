@@ -26,7 +26,7 @@ def _now_iso() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
 
-def convert_to_scholarship(opp_data: Dict[str, Any], user_profile: UserProfile) -> Optional[Scholarship]:
+async def convert_to_scholarship(opp_data: Dict[str, Any], user_profile: UserProfile) -> Optional[Scholarship]:
     """
     Convert any opportunity-type dict to the strict Scholarship model.
     - Normalizes enum casing/values to match app.models
@@ -34,7 +34,7 @@ def convert_to_scholarship(opp_data: Dict[str, Any], user_profile: UserProfile) 
     """
     try:
         # 1) Scoring and categorization
-        match_score = calculate_match_score(opp_data, user_profile)
+        match_score = await calculate_match_score(opp_data, user_profile)
         match_tier = determine_match_tier(match_score)  # -> Excellent/Good/Fair/Poor
         priority_level = determine_priority(opp_data, match_score)  # -> URGENT/HIGH/MEDIUM/LOW
 
@@ -192,7 +192,7 @@ def convert_to_scholarship(opp_data: Dict[str, Any], user_profile: UserProfile) 
         return None
 
 
-def calculate_match_score(opp_data: Dict[str, Any], user_profile: UserProfile) -> int:
+async def calculate_match_score(opp_data: Dict[str, Any], user_profile: UserProfile) -> int:
     """
     Calculate match score using DEEP PERSONALIZATION ENGINE
     Considers interests, passions, demographics, and academics
@@ -200,7 +200,7 @@ def calculate_match_score(opp_data: Dict[str, Any], user_profile: UserProfile) -
     from app.services.personalization_engine import personalization_engine
     
     # Use personalization engine for comprehensive scoring
-    personalized_score = personalization_engine.calculate_personalized_score(
+    personalized_score = await personalization_engine.calculate_personalized_score(
         opp_data, 
         user_profile
     )

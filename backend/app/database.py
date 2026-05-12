@@ -727,6 +727,26 @@ class FirebaseDB:
             logger.error("Failed to fetch match IDs", user_id=user_id, error=str(e))
             return []
             
+    async def mark_first_hunt_complete(self, user_id: str) -> bool:
+        """Mark that a user's first AI-powered hunt has completed.
+        
+        This is the Zero-DB Genesis pattern toggle. Once set to True,
+        the user's matched opportunities (from their personal hunt) are shown.
+        New users see nothing (genesis overlay) until this flag is flipped.
+        """
+        try:
+            doc_ref = self.db.collection('users').document(user_id)
+            doc_ref.set({
+                'first_hunt_complete': True,
+                'first_hunt_at': firestore.SERVER_TIMESTAMP,
+                'updated_at': firestore.SERVER_TIMESTAMP
+            }, merge=True)
+            logger.info("First hunt marked complete for user", user_id=user_id)
+            return True
+        except Exception as e:
+            logger.error("Failed to mark first hunt complete", user_id=user_id, error=str(e))
+            return False
+
 # Global database instance
 db = FirebaseDB()
 

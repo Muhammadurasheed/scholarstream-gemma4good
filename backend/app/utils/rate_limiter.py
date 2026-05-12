@@ -178,10 +178,13 @@ class AdaptiveRateLimiter:
                     else:
                         # Other error — retry once
                         if attempt == 0:
+                            import traceback
+                            tb_str = traceback.format_exc()
                             backoff = self._calculate_backoff(0)
                             logger.warning(
                                 "Gemma call failed, retrying once",
                                 error=error_str[:100],
+                                traceback=tb_str,
                                 backoff_s=round(backoff, 2),
                             )
                             await asyncio.sleep(backoff)

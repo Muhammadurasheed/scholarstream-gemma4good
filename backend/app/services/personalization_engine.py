@@ -46,12 +46,34 @@ class PersonalizationEngine:
             'medical': ['medical', 'health', 'medicine', 'clinical', 'research', 'grant', 'fellowship'],
             'nursing student': ['nursing', 'nurse', 'clinical', 'scrubs', 'healthcare', 'patient'],
         }
+        
+        # Categorical discipline mapping for strict filtering
+        self.discipline_categories = {
+            'medical': ['medicine', 'nursing', 'healthcare', 'biotech', 'clinical', 'pharmacy', 'health', 'surgical', 'dental'],
+            'tech': ['computer science', 'software', 'ai', 'coding', 'engineering', 'it', 'blockchain', 'cybersecurity', 'data science'],
+            'creative': ['art', 'design', 'music', 'creative', 'fashion', 'architecture', 'film', 'drama', 'creative writing'],
+            'humanities': ['history', 'law', 'sociology', 'philosophy', 'literature', 'liberal arts', 'political', 'anthropology'],
+            'business': ['business', 'finance', 'entrepreneurship', 'mba', 'economics', 'marketing', 'venture', 'management'],
+            'sustainability': ['climate', 'environment', 'green', 'energy', 'sustainability', 'ecology', 'conservation']
+        }
         self._gemini_client = None
     
     def _get_attr(self, obj: Any, attr: str, default: Any = None) -> Any:
-        """Helper to get attribute from object or key from dict"""
+        """
+        Helper to get attribute from object or key from dict.
+        V2: Supports ScholarStream's nested 'profile' structure.
+        """
         if isinstance(obj, dict):
-            return obj.get(attr, default)
+            # Try top-level first
+            val = obj.get(attr)
+            if val is not None:
+                return val
+            # Try nested 'profile' key (ScholarStream Standard)
+            profile_nested = obj.get('profile')
+            if isinstance(profile_nested, dict):
+                return profile_nested.get(attr, default)
+            return default
+            
         return getattr(obj, attr, default)
 
     def _safe_get_dict(self, data: Dict[str, Any], key: str) -> Dict[str, Any]:
@@ -61,7 +83,7 @@ class PersonalizationEngine:
             return val
         return {}
 
-    def calculate_personalized_score(
+    async def calculate_personalized_score(
         self, 
         opportunity: Dict[str, Any], 
         user_profile: Any
@@ -70,10 +92,36 @@ class PersonalizationEngine:
         Calculate personalized match score (0-100)
         V2: REMOVED 30% FLOOR - Scores now range from 0-100 based on true fit
         """
-        score = 0.0
-        max_score = 100.0
+        # 1. Start with Heuristic Score (Sync)
+        score = self._calculate_heuristic_score(opportunity, user_profile)
         
-        # 1. Interest Match (40 points max) - MOST IMPORTANT
+        # 2. Add AI-Driven Semantic Boost (Async)
+        # We only do this if the heuristic score isn't already a total mismatch
+        if score > 15.0:
+            semantic_boost = await self.calculate_semantic_score(opportunity, user_profile)
+            # Blend: 60% Heuristic, 40% Semantic AI
+            score = (score * 0.6) + (semantic_boost * 0.4)
+        
+        # 3. Apply Strict Filters (Async Guardrails)
+        score = await self._apply_strict_filters_async(score, opportunity, user_profile)
+        
+        try:
+             opp_name = opportunity.get('name') or opportunity.get('title') or 'Unknown'
+             logger.info(
+                "Personalization V2 Final Score",
+                opportunity=opp_name[:50],
+                final=int(score)
+             )
+        except Exception:
+             pass
+        
+        return float(int(max(min(score, 100.0), 5.0)))
+
+    def _calculate_heuristic_score(self, opportunity: Dict[str, Any], user_profile: Any) -> float:
+        """Core heuristic matching logic (Synchronous)"""
+        score = 0.0
+        
+        # 1. Interest Match (40 points max)
         interest_score = self._score_interests(opportunity, user_profile)
         score += interest_score * 0.4
         
@@ -89,29 +137,7 @@ class PersonalizationEngine:
         academic_score = self._score_academics(opportunity, user_profile)
         score += academic_score * 0.1
         
-        try:
-             opp_name = opportunity.get('name') or opportunity.get('title') or 'Unknown'
-             logger.info(
-                "Personalization V2 Score",
-                opportunity=opp_name[:50],
-                interest=int(interest_score),
-                passion=int(passion_score),
-                demographic=int(demographic_score),
-                academic=int(academic_score),
-                final=int(score)
-             )
-        except Exception:
-             pass
-        
-        # V2 FIX: NO ARTIFICIAL FLOOR - Return true dynamic score
-        user_interests = self._get_attr(user_profile, 'interests') or []
-        if not user_interests:
-            # Empty profile: return actual calculated score (no floor)
-            # This encourages users to complete their profile
-            return float(int(max(min(score, max_score), 5.0)))  # 5% minimum for UI display
-        
-        # For users with profiles, show true calculated score
-        return float(int(max(min(score, max_score), 5.0)))
+        return score
     
     def _score_interests(self, opp: Dict[str, Any], profile: Any) -> float:
         """Score based on user interests (0-100) - FIXED: No duplicate definition"""
@@ -305,6 +331,65 @@ class PersonalizationEngine:
         
         return ' '.join(filter(None, parts))
 
+    async def _apply_strict_filters_async(self, current_score: float, opp: Dict[str, Any], profile: Any) -> float:
+        """
+        Hard guardrail to prevent irrelevant opportunities from reaching the dashboard.
+        If a user's major is Medical and the opportunity is purely Tech (Hackathon), 
+        cap the score at 15%.
+        """
+        user_major = str(self._get_attr(profile, 'major', '')).lower()
+        if not user_major:
+            return current_score
+
+        opp_text = self._get_opportunity_text(opp).lower()
+        
+        # Determine User Category
+        user_cat = None
+        for cat, keywords in self.discipline_categories.items():
+            if any(kw in user_major for kw in keywords):
+                user_cat = cat
+                break
+        
+        if not user_cat:
+            return current_score
+
+        # Determine Opportunity Category
+        opp_cat = None
+        for cat, keywords in self.discipline_categories.items():
+            if any(kw in opp_text for kw in keywords):
+                opp_cat = cat
+                # Special Case: Hackathons are almost always Tech
+                if 'hackathon' in opp_text:
+                    opp_cat = 'tech'
+                break
+
+        # ENFORCEMENT: If categories are known and they mismatch, cap the score.
+        if opp_cat and user_cat and opp_cat != user_cat:
+            bridge_keywords = [
+                'healthcare', 'medical', 'social impact', 'sustainability', 
+                'interdisciplinary', 'all majors', 'all disciplines', 
+                'cross-disciplinary', 'community', 'impact', 'nursing'
+            ]
+            
+            # If no obvious keyword bridge, ask Gemma for a "Principal Judgment"
+            if not any(kw in opp_text for kw in bridge_keywords):
+                try:
+                    from app.services.gemma_service import gemma_service
+                    prompt = f"User is a {user_major} student. Opportunity is '{opp.get('name')}'. Is this highly relevant for them? Answer YES/NO only."
+                    judgment = await gemma_service.generate_content_async(prompt, enable_thinking=False)
+                    answer = judgment["choices"][0]["message"]["content"].strip().upper()
+                    
+                    if "NO" in answer:
+                        logger.info("Strict Filter: Gemma REJECTED mismatch", user=user_major, opp=opp.get('name'))
+                        return min(current_score, 15.0)
+                except Exception as ai_err:
+                    # OPTIMISTIC FALLBACK: If AI call fails, trust the heuristic score
+                    # instead of aggressively rejecting. 
+                    logger.warning("Strict Filter: AI Judgment failed, falling back to heuristics", error=str(ai_err))
+                    return current_score
+
+        return current_score
+
     async def calculate_semantic_score(
         self, 
         opportunity: Dict[str, Any], 
@@ -315,42 +400,32 @@ class PersonalizationEngine:
         Fallback to keyword matching if embeddings unavailable.
         """
         try:
-            from app.services.ai_service import ai_service
+            from app.services.gemma_service import gemma_service
             
             # Build user profile text
             interests = self._get_attr(user_profile, 'interests') or []
             background = self._get_attr(user_profile, 'background') or []
             major = self._get_attr(user_profile, 'major') or ''
             
-            user_text = f"""
-            Interests: {', '.join(interests)}
-            Background: {', '.join(background)}
-            Major: {major}
-            """
-            
+            user_text = f"Major: {major}, Interests: {', '.join(interests)}"
             opp_text = self._get_opportunity_text(opportunity)
             
             # Use Gemma to score semantic similarity (0-100)
-            prompt = f"""
-            Rate the match between this user profile and opportunity on a scale of 0-100.
-            Only output a single integer number, nothing else.
+            prompt = f"On a scale of 0-100, how well does this opportunity match the student? User: {user_text}. Opp: {opp_text[:1000]}. Answer with just the number."
             
-            USER PROFILE:
-            {user_text}
+            result_json = await gemma_service.generate_content_async(prompt, enable_thinking=False)
+            content = result_json["choices"][0]["message"]["content"].strip()
             
-            OPPORTUNITY:
-            {opp_text[:2000]}
-            
-            Score (0-100):
-            """
-            
-            result = await ai_service.generate_content_async(prompt)
-            score = float(result.strip())
-            return max(0, min(100, score))
+            # Extract number
+            import re
+            match = re.search(r'(\d+)', content)
+            if match:
+                return float(match.group(1))
+            return 50.0
             
         except Exception as e:
-            logger.warning("Semantic scoring failed, falling back to keyword", error=str(e))
-            return self.calculate_personalized_score(opportunity, user_profile)
+            logger.warning("Semantic scoring failed, falling back to heuristics", error=str(e))
+            return self._calculate_heuristic_score(opportunity, user_profile)
 
 
 # Global instance

@@ -10,6 +10,7 @@ from app.config import settings
 from app.services.ai_service import ai_service
 from app.services.gemma_service import gemma_service
 from app.models import ScrapedScholarship, UserProfile, AIEnrichmentResponse
+from app.utils.json_utils import robust_json_loads
 
 logger = structlog.get_logger()
 

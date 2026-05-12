@@ -58,7 +58,7 @@ class ScholarSentinel:
                 continue
                 
             # 2. Fast score (Personalization Engine)
-            score = matching_service.calculate_match_score(opp, profile)
+            score = await matching_service.calculate_match_score(opp, profile)
             
             # 3. If high potential (> 80), trigger Gemma 4 for "Deep Reasoning"
             if score >= 80:

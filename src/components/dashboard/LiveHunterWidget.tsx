@@ -9,7 +9,7 @@ export const LiveHunterWidget: React.FC = () => {
     const activeMissions = missions.filter(m => m.status === 'active');
     
     return (
-        <div className="bg-zinc-900/40 backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden shadow-xl">
+        <div className="bg-zinc-900/40 backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden shadow-xl h-[500px] flex flex-col">
             <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                     <div className="relative">
@@ -28,7 +28,8 @@ export const LiveHunterWidget: React.FC = () => {
                 </div>
             </div>
 
-            <div className="p-4 space-y-4">
+            <div className="p-4 flex flex-col flex-grow overflow-hidden">
+                <div className="flex-grow overflow-y-auto space-y-4 pr-2 custom-scrollbar">
                 <AnimatePresence mode="popLayout">
                     {activeMissions.length > 0 ? (
                         activeMissions.map((mission) => (
@@ -66,8 +67,9 @@ export const LiveHunterWidget: React.FC = () => {
                         </div>
                     )}
                 </AnimatePresence>
+                </div>
 
-                <div className="pt-4 border-t border-white/5">
+                <div className="pt-4 border-t border-white/5 flex-shrink-0">
                     <div className="bg-zinc-950/50 rounded-xl p-3 border border-white/5 space-y-2">
                         <div className="flex items-center space-x-2 text-[10px] font-bold text-zinc-500">
                             <Globe className="w-3 h-3" />

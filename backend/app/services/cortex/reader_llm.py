@@ -10,6 +10,7 @@ import json
 import asyncio
 import re
 from urllib.parse import urlparse, urljoin
+from bs4 import BeautifulSoup
 
 from app.services.intelligence_gateway import intelligence_gateway
 
@@ -24,6 +25,33 @@ class ReaderLLM:
     
     def __init__(self):
         logger.info("ReaderLLM initialized via IntelligenceGateway")
+
+    def _clean_html_to_text(self, raw_html: str) -> str:
+        """
+        DOM PRUNING: Strips noise from massive SPA payloads.
+        Converts 1MB of HTML into ~5KB of pure content text.
+        """
+        if not raw_html:
+            return ""
+            
+        try:
+            soup = BeautifulSoup(raw_html, "html.parser")
+            
+            # Remove invisible/noisy tags
+            for element in soup(["script", "style", "noscript", "svg", "path", "nav", "footer", "header", "iframe", "meta", "link"]):
+                element.extract()
+                
+            # Extract text with newlines for readability
+            text = soup.get_text(separator='\n', strip=True)
+            
+            # Collapse multiple newlines/spaces
+            text = re.sub(r'\n+', '\n', text)
+            text = re.sub(r' {2,}', ' ', text)
+            
+            return text
+        except Exception as e:
+            logger.warning("DOM Pruning failed, falling back to raw HTML", error=str(e))
+            return raw_html
 
     async def parse_opportunity(self, raw_text: str, source_url: str) -> Optional[OpportunitySchema]:
         """
@@ -44,11 +72,13 @@ class ReaderLLM:
         This is critical for DevPost, DoraHacks, etc. that show many items per page.
         """
         if not settings.gemma_engine_enabled:
-            logger.warning("Gemma AI (Vertex) engine not enabled in settings")
-            return []
+            logger.warning("Gemma AI engine flag is False in settings — proceeding anyway (hackathon mode). Set GEMMA_ENGINE_ENABLED=true in .env to suppress this warning.")
 
-        # Truncate text to avoid token limits but be generous for list pages
-        truncated_text = raw_text[:80000]
+        # DOM Pruning: Clean the raw HTML into pure text
+        cleaned_text = self._clean_html_to_text(raw_text)
+        
+        # Truncate text to avoid token limits (now much safer since it's pure text, not HTML)
+        truncated_text = cleaned_text[:80000]
         
         # Detect platform for specialized parsing
         platform_hint = self._detect_platform(source_url)
@@ -58,50 +88,45 @@ class ReaderLLM:
         current_date = datetime.now().strftime("%Y-%m-%d")
 
         prompt = f"""
-        You are a Data Extraction Specialist for {platform_hint}.
+        You are an elite Intelligence Extraction Agent for ScholarStream.
         Today's Date: {current_date}
+        Platform context: {platform_hint}
         
-        Extract UP TO {max_items} distinct opportunities (hackathons, scholarships, bounties, grants, competitions) from the page below.
+        Extract UP TO {max_items} distinct OPPORTUNITIES (Hackathons, Scholarships, Bounties, Grants, Fellowships) from the text below.
+        
+        CRITICAL ANTI-HALLUCINATION PROTOCOL (IRON GATE):
+        1. NEVER extract university course catalogs, seminars, generic jobs, books, podcasts, or reading lists.
+        2. If the page only contains courses (e.g. "Theory of Education", "Philosophy 101"), RETURN AN EMPTY ARRAY [].
+        3. A valid opportunity MUST have a concrete application process or prize/stipend.
         
         Return a JSON ARRAY. Each item must match this schema:
         {{
             "title": "String (opportunity name)",
             "organization": "String (hosting org/company)",
-            "amount": Number (total prize pool in USD - EXTRACT FROM "Prize", "Bounty", "Grant Total", "Award", "Prize Pool" sections. Parse values like '$50,000', '50K USDC', 'Up to $10,000'. Set to 0 ONLY if truly unknown),
-            "amount_display": "Human-readable prize string (e.g. '$50,000', 'Up to $10K', '$5K USDC')",
+            "amount": Number (total prize pool in USD. Parse values like '$50K' to 50000. Set to 0 ONLY if truly unknown),
+            "amount_display": "Human-readable prize string (e.g. '$50,000', 'Up to $10K')",
             "deadline": "ISO 8601 Date String (YYYY-MM-DD) or null",
             "deadline_timestamp": Number (Unix Timestamp) or null,
-            "geo_tags": ["String"] (e.g. ["Global", "USA", "Remote"]),
-            "type_tags": ["String"] (e.g. ["Hackathon", "Bounty", "Grant"]),
+            "geo_tags": ["String"] (e.g. ["Global", "Remote", "USA"]),
+            "type_tags": ["String"] (e.g. ["Hackathon", "Bounty", "Scholarship"]),
             "description": "Short summary (1-2 sentences)",
             "eligibility_text": "Requirements snippet",
             "source_url": "Direct URL to this specific opportunity (if extractable)"
         }}
 
-        Platform-Specific Rules for {platform_hint}:
-        - DevPost: Each hackathon card is one opportunity.
-        - DoraHacks: Each hackathon or prize-active BUIDL is one opportunity.
-        - HackerOne/Intigriti: Each public bug bounty program is one opportunity. Organization is the brand (e.g. 'TikTok', 'Google'). Title is the program name.
-        - Superteam/Replit/Algorand: Each bounty/quest listing is one opportunity. Amount is the prize.
-        - MLH: Each event card is one opportunity.
-        - Bounty platforms: Each bounty listing is one opportunity.
-        - Kaggle: Each competition is one opportunity.
-        
         General Rules (STRICT QUALITY CONTROL):
         1. CRITICAL: SKIP any opportunity where the deadline has already passed (Today's Date: {current_date}).
         2. SKIP sections clearly marked as "Ended", "Past", "Closed", or "Finished".
         3. If deadline is missing, use null (don't guess).
-        4. Geo Tags: "Remote"/"Online" → add "Global". Detect country requirements.
-        5. Type Tags: Hackathon, Grant, Bounty, Scholarship, Competition, Internship
-        6. If prize is unclear or not explicitly stated as a number, set amount_display to "Check listing for prize pool" and amount to 0. NEVER use "Varies".
-        7. source_url should be the direct link if visible, else use "{source_url}"
+        4. If prize is unclear, set amount_display to "Check listing for details" and amount to 0. NEVER use "Varies".
+        5. source_url should be the direct link if visible, else use "{source_url}"
         
         Source Page URL: {source_url}
         
         Page Content:
         {truncated_text}
         
-        Return ONLY a valid JSON array. No markdown, no explanations.
+        Return ONLY a valid JSON array. No markdown, no explanations. If no valid opportunities exist, return [].
         """
 
         try:
@@ -126,6 +151,8 @@ class ReaderLLM:
                 data = [data]
             
             opportunities = []
+            from app.services.discovery_pulse import discovery_pulse
+            
             for item in data[:max_items]:
                 try:
                     # Generate stable ID
@@ -148,6 +175,15 @@ class ReaderLLM:
                     opp = OpportunitySchema(**item)
                     opportunities.append(opp)
                     
+                    # TELEMETRY: Announce Match to Discovery Pulse
+                    mission_id = f"extract_{opp.id[:8]}"
+                    opp_label = opp.name[:40] + ("..." if len(opp.name) > 40 else "")
+                    await discovery_pulse.announce_mission(
+                        mission_id, 
+                        f"✨ Match discovered: {opp_label} on {platform_hint}", 
+                        "active"
+                    )
+                    
                 except Exception as parse_error:
                     logger.warning(
                         "Failed to parse individual opportunity", 
@@ -157,7 +193,7 @@ class ReaderLLM:
                     continue
             
             logger.info(
-                "Cortex Reader: Agentic extraction loop starting",
+                "Cortex Reader: Agentic extraction loop complete",
                 source=source_url[:50],
                 extracted=len(opportunities),
                 platform=platform_hint

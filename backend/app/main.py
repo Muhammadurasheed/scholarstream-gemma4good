@@ -11,6 +11,14 @@ from slowapi.errors import RateLimitExceeded
 import structlog
 import logging
 import asyncio
+import os
+
+# === NUCLEAR ENVIRONMENT SANITIZER ===
+# Prevents [Errno 2] FileNotFoundError in httpx/ssl by stripping broken Conda/Windows variables.
+for var in ["SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"]:
+    if var in os.environ:
+        del os.environ[var]
+# =====================================
 
 from app.config import settings
 from app.routes import scholarships, applications, chat, websocket, extension, documents
@@ -190,92 +198,18 @@ async def startup_event():
     
     logger.info("Event Mesh sub-systems wired successfully")
 
-    # === DEVPOST API SCRAPER: IMMEDIATE DATABASE POPULATION ===
-    # Run DevPost API scraper on startup to immediately populate database
-    # This is fast (API-based) and doesn't require Playwright
-    async def run_devpost_api_scraper():
-        await asyncio.sleep(5)  # Wait 5 seconds for server to settle
-        try:
-            from app.services.scrapers.hackathons.devpost_api_scraper import populate_database_with_devpost
-            logger.info("Starting DevPost API scraper for immediate database population...")
-            saved = await populate_database_with_devpost()
-            logger.info(f"DevPost API scraper complete: {saved} hackathons saved to database")
-        except Exception as e:
-            logger.warning("DevPost API scraper failed, Sentinel will handle later", error=str(e))
-
-    asyncio.create_task(run_devpost_api_scraper())
-
-    # === MULTI-PLATFORM SCRAPER: DoraHacks, Immunefi, Superteam, Gitcoin, MLH ===
-    # Run after DevPost to get bounties, more hackathons, and MLH events
-    async def run_multi_platform_scraper():
-        await asyncio.sleep(15)  # Wait 15 seconds (after DevPost scraper)
-        try:
-            # MLH Events Scraper
-            try:
-                from app.services.scrapers.hackathons.mlh_scraper import populate_database_with_mlh
-                logger.info("Starting MLH scraper...")
-                mlh_count = await populate_database_with_mlh()
-                logger.info(f"MLH scraper complete: {mlh_count} events saved")
-            except Exception as e:
-                logger.warning("MLH scraper failed", error=str(e))
-                
-            # TAIKAI Scraper
-            try:
-                from app.services.scrapers.hackathons.taikai_scraper import populate_database_with_taikai
-                logger.info("Starting TAIKAI scraper...")
-                taikai_count = await populate_database_with_taikai()
-                logger.info(f"TAIKAI scraper complete: {taikai_count} events saved")
-            except Exception as e:
-                logger.warning("TAIKAI scraper failed", error=str(e))
-
-            # HackQuest Scraper
-            try:
-                from app.services.scrapers.hackathons.hackquest_scraper import populate_database_with_hackquest
-                logger.info("Starting HackQuest scraper...")
-                hq_count = await populate_database_with_hackquest()
-                logger.info(f"HackQuest scraper complete: {hq_count} events saved")
-            except Exception as e:
-                logger.warning("HackQuest scraper failed", error=str(e))
-                
-            # Intigriti Scraper
-            try:
-                from app.services.scrapers.bounties.intigriti_scraper import populate_database_with_intigriti
-                logger.info("Starting Intigriti scraper...")
-                int_count = await populate_database_with_intigriti()
-                logger.info(f"Intigriti scraper complete: {int_count} bounties saved")
-            except Exception as e:
-                logger.warning("Intigriti scraper failed", error=str(e))
-            
-            # Multi-platform bounties (DoraHacks, Superteam, Gitcoin, Immunefi)
-            from app.services.scrapers.bounties.multi_platform_scraper import populate_database_multi_platform
-            logger.info("Starting multi-platform scraper (DoraHacks, Immunefi, Superteam, Gitcoin)...")
-            results = await populate_database_multi_platform()
-            logger.info(f"Multi-platform scraper complete", **results)
-        except Exception as e:
-            logger.warning("Multi-platform scraper failed", error=str(e))
-
-    asyncio.create_task(run_multi_platform_scraper())
-
-    # === CORTEX: AUTO-START SENTINEL PATROLS ===
-    # The Sentinel will run on a schedule, patrolling opportunity hubs.
-    # Default: Every 6 hours. Delayed start to not block server.
-    async def run_sentinel_scheduler():
-        # Delay first patrol to allow server to fully start
-        await asyncio.sleep(10)  # Wait 10 seconds before first patrol
-        
-        while True:
-            try:
-                from app.services.cortex.navigator import sentinel
-                logger.info("Sentinel starting periodic patrol mission (30m interval)...")
-                await sentinel.patrol()
-                logger.info("Sentinel patrol mission complete. Sleeping for 30 minutes.")
-            except Exception as e:
-                logger.error("Sentinel patrol loop error", error=str(e))
-            
-            await asyncio.sleep(1800)  # 30 minutes (Live Hunting Mode)
-
-    asyncio.create_task(run_sentinel_scheduler())
-    logger.info("Sentinel Patrol Loop scheduled (30-minute Live Hunting intervals)")
+    # === CORTEX: START BACKGROUND SCHEDULER ===
+    # Handles Heartbeats (6m), Sentinel Patrols (30m), and User Scans (12h)
+    # NOTE: Cold-start scrapers removed. The Sentinel's aggregate_patrol() is
+    # DNA-driven — it fetches active user profiles first, then targets sources.
+    # Running scrapers with no user profile wastes resources and creates stale data.
+    from app.services.background_jobs import start_scheduler, stop_scheduler
+    start_scheduler()
+    logger.info(
+        "Cortex V3 scheduler started",
+        gemma_engine_enabled=settings.gemma_engine_enabled,
+        note="Agents will activate when users have profiles with patrol_enabled=True"
+    )
 
 
 # Shutdown event
@@ -284,10 +218,14 @@ async def shutdown_event():
     """Cleanup on shutdown"""
     logger.info("Shutting down ScholarStream API")
     
-    # Stop Event Broker
+    # 1. Stop Scheduler
+    from app.services.background_jobs import stop_scheduler
+    stop_scheduler()
+    
+    # 2. Stop Event Broker
     await broker.stop()
     
-    # Close scraper HTTP client
+    # 3. Close scraper HTTP client
     from app.services.scraper_service import scraper_service
     await scraper_service.close()
 

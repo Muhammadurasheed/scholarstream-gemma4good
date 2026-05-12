@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     ai_api_key: Optional[str] = Field(default=None, env="AI_API_KEY")
     ai_model: str = Field(default="google/gemma-4-26b-a4b-it-maas", env="AI_MODEL")
     
+    # Tavily AI Search
+    tavily_api_key: Optional[str] = Field(default=None, env="TAVILY_API_KEY")
+    
     # Upstash Redis Configuration (HTTP-based serverless Redis)
     upstash_redis_rest_url: str = Field(default="", env="UPSTASH_REDIS_REST_URL")
     upstash_redis_rest_token: str = Field(default="", env="UPSTASH_REDIS_REST_TOKEN")

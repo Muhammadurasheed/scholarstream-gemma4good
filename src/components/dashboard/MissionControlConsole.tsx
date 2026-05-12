@@ -25,55 +25,28 @@ export const MissionControlConsole: React.FC<MissionControlConsoleProps> = ({
     }
   }, [logs]);
 
-  // Initializing logs & Dynamic telemetry
-  useEffect(() => {
-    const firstName = userProfile?.name?.split(' ')[0] || 'New Recruit';
-    const major = userProfile?.major || 'Generalist';
-    const interests = userProfile?.interests?.slice(0, 3).join('/') || 'Opportunities';
-
-    const dynamicLogs = [
-      "Initializing Cortex V3 'Deep Scout' Mission...",
-      "Auth Verified: Gemma 4 Good Native Engine",
-      `Analyzing User Profile (${firstName})...`,
-      `Digital DNA identified: ${major} Specialist`,
-      "Geolocation strategy: 40/30/30 (Global/Continental/Local)",
-      "Sentinel Patrolling Hidden Corners (Reddit, LinkedIn, X)...",
-      `[THINKING] Identifying specialized portals for ${major}...`,
-      `[THINKING] Targeting high-signal domains for ${interests}...`,
-      "[REASONING] Prioritizing .edu domains for Atomic Source authenticity.",
-      "Deep web scan initialization complete.",
-      "Real-time hunting stream connected."
-    ];
-    
-    let i = 0;
-    const interval = setInterval(() => {
-      if (i < dynamicLogs.length) {
-        const logLine = dynamicLogs[i];
-        if (logLine) {
-          const prefix = logLine.includes('[THINKING]') || logLine.includes('[REASONING]') ? '🧠' : logLine.includes('[SCOUT]') ? '📡' : '[SYSTEM]';
-          const content = logLine.replace(/\[.*?\] /, '');
-          setLogs(prev => [...prev, `${prefix} ${content}`]);
-        }
-        i++;
-      } else {
-        clearInterval(interval);
-      }
-    }, 400);
-
-    return () => clearInterval(interval);
-  }, [userProfile]); // Re-run if profile changes
-
   // Transform live missions into terminal logs
   useEffect(() => {
     if (missions.length > 0) {
-      const latest = missions[0];
-      const timestamp = new Date().toLocaleTimeString([], { hour12: false });
-      const newLog = `[${timestamp}] ${latest.label}`;
-      
-      setLogs(prev => {
-        if (prev[prev.length - 1] === newLog) return prev;
-        return [...prev.slice(-15), newLog]; // Keep last 15 logs
+      // Process missions into logs
+      // We take the last 20 missions to keep the console alive but focused
+      const missionLogs = missions.slice(0, 20).reverse().map(mission => {
+        const timestamp = new Date(mission.timestamp || Date.now()).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        
+        let prefix = '[SYSTEM]';
+        if (mission.thought) prefix = '🧠';
+        else if (mission.label?.includes('DNA') || mission.label?.includes('Analyzing')) prefix = '🧠';
+        else if (mission.label?.includes('Drone') || mission.label?.includes('Scanning') || mission.label?.includes('Hunt')) prefix = '📡';
+        else if (mission.label?.includes('Match') || mission.label?.includes('discovered')) prefix = '✨';
+        
+        const logContent = mission.thought ? `[THOUGHT] ${mission.thought}` : mission.label;
+        return `${prefix} [${timestamp}] ${logContent}`;
       });
+      
+      setLogs(missionLogs);
+    } else {
+      // Standby state if no missions
+      setLogs(['[SYSTEM] Sentinel Drones on standby. Awaiting next deployment signal...']);
     }
   }, [missions]);
 
@@ -133,8 +106,8 @@ export const MissionControlConsole: React.FC<MissionControlConsoleProps> = ({
                       animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
                       transition={{ duration: 0.3 }}
                       className={`font-mono text-[13px] leading-relaxed ${
+                        isReasoning ? 'text-purple-300 font-medium italic' : 
                         isScout ? 'text-cyan-300 font-medium' : 
-                        isReasoning ? 'text-purple-300' : 
                         isSystem ? 'text-zinc-500' : 'text-blue-400'
                       }`}
                     >

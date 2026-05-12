@@ -184,6 +184,13 @@ class ApiService {
   async getDiscoveryPulse(): Promise<{ status: 'active' | 'idle'; missions: any[]; timestamp: number }> {
     return this.fetchWithAuth('/api/scholarships/discovery-pulse');
   }
+
+  // Purge all discovery telemetry
+  async purgeDiscoveryPulse(): Promise<{ status: 'success' }> {
+    return this.fetchWithAuth('/api/scholarships/discovery-pulse/purge', {
+      method: 'POST',
+    });
+  }
 }
 
 import type { ApplicationDraft, DocumentData, ApplicationSubmission } from '@/types/scholarship';

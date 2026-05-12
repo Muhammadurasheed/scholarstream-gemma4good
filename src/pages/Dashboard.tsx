@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Target, DollarSign, Clock, FileText, Sparkles, Search, Wifi, WifiOff } from 'lucide-react';
+import { Target, DollarSign, Clock, FileText, Sparkles, Search, Wifi, WifiOff, Radar } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
 import { StatsCard } from '@/components/dashboard/StatsCard';
@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useScholarships } from '@/hooks/useScholarships';
+import { useDiscoveryPulse } from '@/hooks/useDiscoveryPulse';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCurrency, calculateDaysUntilDeadline, isNewScholarship } from '@/utils/scholarshipUtils';
@@ -69,6 +70,8 @@ const Dashboard = () => {
     discoveryStatus,
     discoveryProgress,
     triggerDiscovery,
+    thought,
+    backendDiscoveryStatus,
   } = useScholarships();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -175,8 +178,9 @@ const Dashboard = () => {
   useEffect(() => {
     if (!user?.uid || !userProfile) return;
     
+    // Auto-refresh match on login to ensure Freshness Guard is active
     const hasScouted = sessionStorage.getItem(`scouted_${user.uid}`);
-    if (!hasScouted) {
+    if (!hasScouted || user.uid === 'demo_guest_user') {
       sessionStorage.setItem(`scouted_${user.uid}`, 'true');
       fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/api/scholarships/scout-profile/${user.uid}`, {
         method: 'POST',
@@ -445,35 +449,6 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Genesis State Banner — shown while agents are hunting for brand-new users */}
-          {isFirstVisit && genesisPhase === 'hunting' && (
-            <div className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/60 via-black/40 to-teal-950/40 p-6 backdrop-blur-xl">
-              {/* Animated background pulse */}
-              <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 via-transparent to-teal-500/5 animate-pulse" />
-              <div className="relative flex items-center gap-4">
-                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-emerald-400 animate-spin" style={{ animationDuration: '3s' }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-base font-bold text-emerald-300 mb-1">Your AI Agents Are Hunting Live</h3>
-                  <p className="text-sm text-emerald-400/80 animate-pulse">{genesisMessage}</p>
-                </div>
-                <div className="hidden md:flex items-center gap-1.5 text-xs text-emerald-500/60">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>LIVE</span>
-                </div>
-              </div>
-              <div className="mt-4 flex gap-2">
-                {['DevPost', 'MLH', 'Reddit', 'LinkedIn', 'Kaggle'].map((src, i) => (
-                  <span key={src} className="text-[10px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                    style={{ animationDelay: `${i * 300}ms` }}>
-                    {src}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Mission Control Console (Telemetry) */}
           <div className="hidden lg:block">
             <MissionControlConsole 
@@ -593,16 +568,20 @@ const Dashboard = () => {
                         </div>
                         
                         <h3 className="text-2xl font-black tracking-tight text-foreground">
-                          {status === 'active' ? "Agent Fleet Deployed" : "Scanning Deep Web Signals"}
+                          {status === 'active' || backendDiscoveryStatus === 'processing' ? "Agent Fleet Deployed" : "Scanning Deep Web Signals"}
                         </h3>
                         
                         <p className="text-muted-foreground max-w-md mx-auto mt-3 text-lg leading-relaxed">
-                          {status === 'active' 
-                            ? `Our Sentinel drones are currently scouring ${missions[0]?.target || 'global databases'} specifically for your ${deriveProfileType(userProfile)} DNA.`
-                            : "Cortex V3 is initializing your personalized hunting mission. New matches will appear here in real-time."}
+                          {thought ? (
+                            <span className="italic text-primary/80">"🧠 {thought}"</span>
+                          ) : status === 'active' ? (
+                            `Our Sentinel drones are currently scouring ${missions[0]?.target || 'global databases'} specifically for your ${deriveProfileType(userProfile)} DNA.`
+                          ) : (
+                            "Cortex V3 is initializing your personalized hunting mission. New matches will appear here in real-time."
+                          )}
                         </p>
 
-                        {status === 'active' && (
+                        {(status === 'active' || backendDiscoveryStatus === 'processing') && (
                           <div className="mt-8 px-6 py-3 bg-primary/10 rounded-full border border-primary/20 flex items-center gap-3">
                             <span className="w-2 h-2 rounded-full bg-primary animate-ping" />
                             <span className="text-sm font-bold text-primary uppercase tracking-widest">

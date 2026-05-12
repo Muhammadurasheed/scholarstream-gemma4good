@@ -26,8 +26,8 @@ async def sentinel_patrol_job():
     logger.info("Cortex V3 Sentinel Patrol: Starting mission")
     try:
         from app.services.cortex.navigator import sentinel
-        await sentinel.patrol()
-        logger.info("Cortex V3 Sentinel Patrol: Mission complete")
+        await sentinel.aggregate_patrol()
+        logger.info("Cortex V3 Sentinel DNA Patrol: Mission complete")
     except Exception as e:
         logger.error("Sentinel patrol failed", error=str(e), exc_info=True)
 
@@ -68,12 +68,36 @@ async def gemma_health_check_job():
         )
 
 
+async def intelligence_heartbeat_job():
+    """
+    Tier 0: Pulse the system heartbeat.
+    Ensures the dashboard always signals that the agentic mesh is alive.
+    Runs every 6 minutes.
+    """
+    try:
+        from app.services.discovery_pulse import discovery_pulse
+        await discovery_pulse.heartbeat()
+    except Exception:
+        pass
+
+
 def start_scheduler():
     """
     Initialize and start the background job scheduler.
     Called once on app startup from main.py.
     """
     logger.info("Initializing Cortex V3 background job scheduler")
+
+    # -- Tier 0: Intelligence Heartbeat -- every 6 minutes --
+    scheduler.add_job(
+        intelligence_heartbeat_job,
+        'interval',
+        minutes=6,
+        id='sentinel_heartbeat',
+        replace_existing=True,
+        max_instances=1,
+        next_run_time=datetime.now() + timedelta(seconds=5),
+    )
 
     # -- Tier 1: Sentinel Patrol -- every 30 minutes --
     scheduler.add_job(
@@ -111,7 +135,7 @@ def start_scheduler():
     scheduler.start()
     logger.info(
         "Cortex V3 scheduler started",
-        jobs=["sentinel_patrol (30min)", "scholar_sentinel (12h)", "gemma_health_check (1h)"]
+        jobs=["heartbeat (6m)", "sentinel_patrol (30min)", "scholar_sentinel (12h)", "gemma_health_check (1h)"]
     )
 
 
