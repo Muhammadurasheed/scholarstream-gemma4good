@@ -9,8 +9,16 @@ from app.utils.json_utils import robust_json_loads
 import json
 import asyncio
 import re
+import hashlib
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
+
+try:
+    from upstash_redis import Redis
+    UPSTASH_AVAILABLE = True
+except ImportError:
+    UPSTASH_AVAILABLE = False
+    Redis = None
 
 from app.services.intelligence_gateway import intelligence_gateway
 
@@ -25,6 +33,20 @@ class ReaderLLM:
     
     def __init__(self):
         logger.info("ReaderLLM initialized via IntelligenceGateway")
+        self.redis_client = None
+        if UPSTASH_AVAILABLE and settings.upstash_redis_rest_url and settings.upstash_redis_rest_token:
+            try:
+                self.redis_client = Redis(
+                    url=settings.upstash_redis_rest_url,
+                    token=settings.upstash_redis_rest_token
+                )
+                logger.info("Semantic Caching initialized in ReaderLLM")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Upstash Redis in ReaderLLM: {e}")
+
+    def _compute_dom_hash(self, text: str) -> str:
+        """Computes a SHA-256 fingerprint of the cleaned text."""
+        return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
     def _clean_html_to_text(self, raw_html: str) -> str:
         """
@@ -130,9 +152,34 @@ class ReaderLLM:
         """
 
         try:
-            # Call AI gateway directly — rate limiting is handled inside gemma_service
-            # (uses gemma_rate_limiter at 200 RPM, not the old gemini_rate_limiter at 30 RPM)
-            raw_response = await self._call_ai_gateway(prompt)
+            # 1. Compute Semantic Fingerprint
+            dom_hash = self._compute_dom_hash(truncated_text)
+            cache_key = f"cortex_extract_{dom_hash}"
+            
+            # 2. Check Cache
+            if self.redis_client:
+                try:
+                    cached_data = self.redis_client.get(cache_key)
+                    if cached_data:
+                        logger.info("Semantic Cache Hit — bypassing Gemma LLM", url=source_url, hash=dom_hash[:8])
+                        data = robust_json_loads(cached_data)
+                        if data is not None:
+                            # Skip the LLM call entirely! Just skip to step 5.
+                            raw_response = cached_data
+                            is_cached = True
+                        else:
+                            is_cached = False
+                    else:
+                        is_cached = False
+                except Exception as e:
+                    logger.debug("Redis cache check failed", error=str(e))
+                    is_cached = False
+            else:
+                is_cached = False
+
+            # 3. Cache Miss: Call Gemma
+            if not is_cached:
+                raw_response = await self._call_ai_gateway(prompt)
             
             # Handle potential JSON issues
             if raw_response.startswith("```"):
@@ -145,6 +192,14 @@ class ReaderLLM:
             if data is None:
                 logger.warning("Cortex Reader: No valid JSON data extracted from AI response", url=source_url)
                 return []
+                
+            # 4. Save to Cache
+            if not is_cached and self.redis_client and data is not None:
+                try:
+                    # Cache for 24 hours
+                    self.redis_client.set(cache_key, json.dumps(data), ex=86400)
+                except Exception:
+                    pass
             
             # Ensure it's a list
             if isinstance(data, dict):

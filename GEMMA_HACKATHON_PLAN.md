@@ -40,6 +40,7 @@
 - [X] Update `ChatService.py` to use the new Gemma endpoint.
 - [X] Implement native ReAct loop for Gemma 4 (Reasoning Mode).
 - [X] Verify "Sentinel" crawler performance with the new engine.
+- [X] Implement FAANG-Grade Vertex Quota Resilience (Semantic DOM Caching & Global Circuit Breaker) to bypass harsh rate limits.
 
 ---
 

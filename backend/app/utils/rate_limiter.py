@@ -215,9 +215,9 @@ legacy_rate_limiter = AdaptiveRateLimiter(
 # so that other AI 429s do NOT throttle Gemma requests.
 # -------------------------------------------------------------------------
 gemma_rate_limiter = AdaptiveRateLimiter(
-    max_rpm=200,         # Vertex AI MaaS supports high concurrency
-    max_concurrent=20,   # Up to 20 parallel Gemma calls
-    max_retries=3,       # Fewer retries — Vertex is more reliable
-    base_backoff=1.0,    # 1s base → 2s → 4s
-    max_backoff=10.0,    # Never wait more than 10s
+    max_rpm=30,          # Vertex AI MaaS quota is often strict on base projects
+    max_concurrent=3,    # Limit parallel Gemma calls to prevent 429 queue exhaustion
+    max_retries=5,       # More retries to survive transient quota limits
+    base_backoff=2.0,    # 2s base → 4s → 8s
+    max_backoff=30.0,    # Never wait more than 30s
 )

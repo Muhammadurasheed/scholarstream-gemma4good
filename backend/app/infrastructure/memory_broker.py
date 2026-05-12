@@ -61,7 +61,7 @@ class MemoryBroker:
         logger.info("Handler subscribed", topic=topic, handler=handler.__name__)
 
     async def _dispatcher(self):
-        """Background loop to process events from queue"""
+        """Background loop to process events from queue with Circuit Breaker"""
         while self._running:
             try:
                 event = await self._queue.get()
@@ -70,14 +70,18 @@ class MemoryBroker:
                 
                 handlers = self._subscribers.get(topic, [])
                 if not handlers:
-                    # Debug log only for unhandled topics to avoid noise
-                    # logger.debug("No handlers for topic", topic=topic)
                     self._queue.task_done()
                     continue
 
                 # Dispatch to all handlers concurrently
                 tasks = [self._safe_execute(h, payload) for h in handlers]
-                await asyncio.gather(*tasks)
+                results = await asyncio.gather(*tasks)
+                
+                # CIRCUIT BREAKER: Check if any handler hit a 429 Quota Error
+                if any(r == "429" for r in results):
+                    logger.critical("Circuit Breaker OPEN — Vertex AI Quota Exhausted. Pausing global queue for 60s.")
+                    await asyncio.sleep(60)
+                    logger.info("Circuit Breaker CLOSED — Resuming queue processing.")
                 
                 self._queue.task_done()
                 
@@ -86,9 +90,16 @@ class MemoryBroker:
             except Exception as e:
                 logger.error("MemoryBroker dispatcher error", error=str(e))
 
-    async def _safe_execute(self, handler, payload):
-        """Execute handler with error catching"""
+    async def _safe_execute(self, handler, payload) -> str:
+        """Execute handler with error catching and Circuit Breaker signaling"""
         try:
             await handler(payload)
+            return "OK"
         except Exception as e:
-            logger.error("EventHandler failed", handler=handler.__name__, error=str(e))
+            error_msg = str(e)
+            logger.error("EventHandler failed", handler=handler.__name__, error=error_msg)
+            
+            # Detect Google Cloud 429 Quota / Resource Exhausted
+            if "429" in error_msg or "queue is full" in error_msg.lower() or "resource_exhausted" in error_msg.lower():
+                return "429"
+            return "ERROR"
